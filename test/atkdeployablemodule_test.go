@@ -33,10 +33,21 @@ func TestRunDeployment(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "base.directory", "/tmp")
+	ctx = context.WithValue(ctx, atk.BaseDirectory, "/tmp")
 	outbuff := new(bytes.Buffer)
 	errbuff := new(bytes.Buffer)
-	deployment := atk.NewAtkDeployableModule(ctx, log, outbuff, errbuff, module)
+
+	ctx = context.WithValue(ctx, atk.LoggerContextKey, *log)
+	ctx = context.WithValue(ctx, atk.StdOutContextKey, *outbuff)
+	ctx = context.WithValue(ctx, atk.StdErrContextKey, *errbuff)
+
+	cfg := &atk.AtkRunCfg{
+		Stdout: outbuff,
+		Stderr: outbuff,
+		Logger: log,
+	}
+
+	deployment := atk.NewAtkDeployableModule(ctx, cfg, module)
 	err := deployment.Deploy(ctx)
 
 	assert.Nil(t, err)

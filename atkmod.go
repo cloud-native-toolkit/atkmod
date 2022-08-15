@@ -15,6 +15,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type AtkContextKey string
+
+const (
+	LoggerContextKey AtkContextKey = "atk.logger"
+	StdOutContextKey AtkContextKey = "atk.stdout"
+	StdErrContextKey AtkContextKey = "atk.stderr"
+	BaseDirectory    AtkContextKey = "atk.basedir"
+)
+
 type EnvVarInfo struct {
 	Name  string `json:"name" yaml:"name"`
 	Value string `json:"value" yaml:"value"`
@@ -130,26 +139,30 @@ func NewPodmanCliCommandBuilder() *PodmanCliCommandBuilder {
 	}
 }
 
+type AtkRunCfg struct {
+	Stdout io.Writer
+	Stderr io.Writer
+	Logger *logger.Logger
+}
+
 type CliModuleRunner struct {
-	cmdBuilder *PodmanCliCommandBuilder
-	stdout     io.Writer
-	stderr     io.Writer
-	logger     *logger.Logger
+	AtkRunCfg
+	PodmanCliCommandBuilder
 }
 
 // RunImage
 func (r *CliModuleRunner) Run(ctx context.Context, info ImageInfo) error {
-	cmdStr, err := r.cmdBuilder.BuildFrom(info)
+	cmdStr, err := r.BuildFrom(info)
 	if err != nil {
 		return err
 	}
 
-	r.logger.Infof("running command: %s", cmdStr)
+	r.Logger.Infof("running command: %s", cmdStr)
 	// TODO: Here we will actually run the command.
 	cmdParts := strings.Split(cmdStr, " ")
 	runCmd := exec.Command(cmdParts[0], cmdParts[1:]...)
-	runCmd.Stdout = r.stdout
-	runCmd.Stderr = r.stderr
+	runCmd.Stdout = r.Stdout
+	runCmd.Stderr = r.Stderr
 
 	err = runCmd.Run()
 
@@ -175,18 +188,16 @@ func (m *AtkDepoyableModule) Deploy(ctx context.Context) error {
 
 func (m *AtkDepoyableModule) PostDeploy(ctx context.Context) error { return nil }
 
-func NewAtkDeployableModule(ctx context.Context, log *logger.Logger, stdout io.Writer, stderr io.Writer, module *AtkModule) *AtkDepoyableModule {
+func NewAtkDeployableModule(ctx context.Context, runCfg *AtkRunCfg, module *AtkModule) *AtkDepoyableModule {
 	builder := NewPodmanCliCommandBuilder()
-	cwd := fmt.Sprintf("%s", ctx.Value("base.directory"))
+	cwd := fmt.Sprintf("%s", ctx.Value(BaseDirectory))
 	if len(cwd) == 0 {
 		cwd, _ = os.Getwd()
 	}
-	builder.WithVolume(cwd)
+	builder = builder.WithVolume(cwd)
 	runner := &CliModuleRunner{
-		cmdBuilder: builder,
-		stdout:     stdout,
-		stderr:     stderr,
-		logger:     log,
+		*runCfg,
+		*builder,
 	}
 	obj := &AtkDepoyableModule{
 		*module,
