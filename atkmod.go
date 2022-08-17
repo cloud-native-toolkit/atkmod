@@ -169,35 +169,39 @@ func (r *CliModuleRunner) Run(ctx context.Context, info ImageInfo) error {
 	return err
 }
 
-type DeployableModuleState string
+type Status string
 
 const (
-	None          DeployableModuleState = "none"
-	Invalid       DeployableModuleState = "invalid"
-	Configured    DeployableModuleState = "configured"
-	Validated     DeployableModuleState = "validated"
-	PreDeploying  DeployableModuleState = "predeploying"
-	PreDeployed   DeployableModuleState = "predeployed"
-	Deploying     DeployableModuleState = "deploying"
-	Deployed      DeployableModuleState = "deployed"
-	PostDeploying DeployableModuleState = "postdeploying"
-	PostDeployed  DeployableModuleState = "postdeployed"
-	Done          DeployableModuleState = PostDeployed
-	Errored       DeployableModuleState = "errored"
+	None          Status = "none"
+	Invalid       Status = "invalid"
+	Configured    Status = "configured"
+	Validated     Status = "validated"
+	PreDeploying  Status = "predeploying"
+	PreDeployed   Status = "predeployed"
+	Deploying     Status = "deploying"
+	Deployed      Status = "deployed"
+	PostDeploying Status = "postdeploying"
+	PostDeployed  Status = "postdeployed"
+	Done          Status = PostDeployed
+	Errored       Status = "errored"
 )
 
-type AtkModuleState struct {
-	Previous DeployableModuleState
-	Current  DeployableModuleState
+type RunFunc func()
+
+type ModState struct {
+	Previous Status
+	Current  Status
+	Handler  RunFunc
+	Next     Status
 }
 
 type AtkDepoyableModule struct {
 	AtkModule
-	AtkModuleState
+	ModState
 	CliModuleRunner
 }
 
-func (m *AtkDepoyableModule) updateState(state DeployableModuleState) {
+func (m *AtkDepoyableModule) updateState(state Status) {
 	m.Previous = m.Current
 	m.Current = state
 }
@@ -232,11 +236,11 @@ func (m *AtkDepoyableModule) Deploy(ctx context.Context) error {
 
 func (m *AtkDepoyableModule) PostDeploy(ctx context.Context) error {
 	m.updateState(PostDeploying)
-	err := m.Run(ctx, m.Specifications.Deploy)
+	err := m.Run(ctx, m.Specifications.PostDeploy)
 	if err != nil {
 		m.updateState(Errored)
 	} else {
-		m.updateState(PreDeployed)
+		m.updateState(PostDeployed)
 	}
 	return err
 }
@@ -258,7 +262,7 @@ func NewAtkDeployableModule(ctx context.Context, runCfg *AtkRunCfg, module *AtkM
 	}
 	obj := &AtkDepoyableModule{
 		*module,
-		AtkModuleState{
+		ModState{
 			Previous: None,
 			Current:  Invalid,
 		},
