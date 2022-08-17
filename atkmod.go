@@ -169,9 +169,37 @@ func (r *CliModuleRunner) Run(ctx context.Context, info ImageInfo) error {
 	return err
 }
 
+type DeployableModuleState string
+
+const (
+	None          DeployableModuleState = "none"
+	Invalid       DeployableModuleState = "invalid"
+	Configured    DeployableModuleState = "configured"
+	Validated     DeployableModuleState = "validated"
+	PreDeploying  DeployableModuleState = "predeploying"
+	PreDeployed   DeployableModuleState = "predeployed"
+	Deploying     DeployableModuleState = "deploying"
+	Deployed      DeployableModuleState = "deployed"
+	PostDeploying DeployableModuleState = "postdeploying"
+	PostDeployed  DeployableModuleState = "postdeployed"
+	Done          DeployableModuleState = PostDeployed
+	Errored       DeployableModuleState = "errored"
+)
+
+type AtkModuleState struct {
+	Previous DeployableModuleState
+	Current  DeployableModuleState
+}
+
 type AtkDepoyableModule struct {
 	AtkModule
+	AtkModuleState
 	CliModuleRunner
+}
+
+func (m *AtkDepoyableModule) updateState(state DeployableModuleState) {
+	m.Previous = m.Current
+	m.Current = state
 }
 
 func (m *AtkDepoyableModule) ListParams() ([]string, error) { return []string{""}, nil }
@@ -180,13 +208,42 @@ func (m *AtkDepoyableModule) ValidateParam(name string, value string) (bool, err
 	return false, nil
 }
 
-func (m *AtkDepoyableModule) PreDeploy(ctx context.Context) error { return nil }
-
-func (m *AtkDepoyableModule) Deploy(ctx context.Context) error {
-	return m.Run(ctx, m.Specifications.Deploy)
+func (m *AtkDepoyableModule) PreDeploy(ctx context.Context) error {
+	m.updateState(PreDeploying)
+	err := m.Run(ctx, m.Specifications.PreDeploy)
+	if err != nil {
+		m.updateState(Errored)
+	} else {
+		m.updateState(PreDeployed)
+	}
+	return err
 }
 
-func (m *AtkDepoyableModule) PostDeploy(ctx context.Context) error { return nil }
+func (m *AtkDepoyableModule) Deploy(ctx context.Context) error {
+	m.updateState(Deploying)
+	err := m.Run(ctx, m.Specifications.Deploy)
+	if err != nil {
+		m.updateState(Errored)
+	} else {
+		m.updateState(Deployed)
+	}
+	return err
+}
+
+func (m *AtkDepoyableModule) PostDeploy(ctx context.Context) error {
+	m.updateState(PostDeploying)
+	err := m.Run(ctx, m.Specifications.Deploy)
+	if err != nil {
+		m.updateState(Errored)
+	} else {
+		m.updateState(PreDeployed)
+	}
+	return err
+}
+
+func (m *AtkDepoyableModule) IsErrored() bool {
+	return m.Current == Errored
+}
 
 func NewAtkDeployableModule(ctx context.Context, runCfg *AtkRunCfg, module *AtkModule) *AtkDepoyableModule {
 	builder := NewPodmanCliCommandBuilder()
@@ -201,6 +258,10 @@ func NewAtkDeployableModule(ctx context.Context, runCfg *AtkRunCfg, module *AtkM
 	}
 	obj := &AtkDepoyableModule{
 		*module,
+		AtkModuleState{
+			Previous: None,
+			Current:  Invalid,
+		},
 		*runner,
 	}
 	return obj
