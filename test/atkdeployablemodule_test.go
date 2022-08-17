@@ -26,9 +26,9 @@ func TestRunDeployment(t *testing.T) {
 		},
 	}
 
-	module := &atk.AtkModule{
+	module := &atk.ModuleInfo{
 		Specifications: atk.SpecInfo{
-			Deploy: *deployImg,
+			PreDeploy: *deployImg,
 		},
 	}
 
@@ -37,23 +37,23 @@ func TestRunDeployment(t *testing.T) {
 	outbuff := new(bytes.Buffer)
 	errbuff := new(bytes.Buffer)
 
-	ctx = context.WithValue(ctx, atk.LoggerContextKey, *log)
-	ctx = context.WithValue(ctx, atk.StdOutContextKey, *outbuff)
-	ctx = context.WithValue(ctx, atk.StdErrContextKey, *errbuff)
-
-	cfg := &atk.AtkRunCfg{
-		Stdout: outbuff,
-		Stderr: outbuff,
-		Logger: log,
+	runCtx := &atk.RunContext{
+		Out: outbuff,
+		Err: errbuff,
+		Log: *log,
 	}
 
-	deployment := atk.NewAtkDeployableModule(ctx, cfg, module)
-	err := deployment.Deploy(ctx)
+	deployment := atk.NewDeployableModule(ctx, runCtx, module)
+	// For the test purposes, let us just start out with this ready to pre-deploy
+	deployment.Notify(atk.Validated)
+	handler, exists := deployment.Next()
 
-	assert.Nil(t, err)
+	handler(runCtx, deployment)
+
+	assert.True(t, exists)
 	assert.Equal(t, 1, len(hook.Entries))
 	assert.Equal(t, logger.InfoLevel, hook.LastEntry().Level)
 	assert.Equal(t, "running command: /usr/local/bin/podman run --rm -v /tmp:/workspace -e MYVAR=thisismyvalue localhost/atk-predeployer", hook.LastEntry().Message)
-	assert.Equal(t, "deploying...\n", outbuff.String())
+	assert.Equal(t, "pre deploying...\n", outbuff.String())
 
 }

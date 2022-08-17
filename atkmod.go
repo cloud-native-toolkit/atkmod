@@ -54,7 +54,7 @@ type SpecInfo struct {
 	PostDeploy ImageInfo `json:"post_deploy" yaml:"post_deploy"`
 }
 
-type AtkModule struct {
+type ModuleInfo struct {
 	Id             string   `json:"id" yaml:"id"`
 	Name           string   `json:"name" yaml:"name"`
 	Version        string   `json:"version" yaml:"version"`
@@ -63,14 +63,6 @@ type AtkModule struct {
 	Dependencies   []string `json:"dependencies" yaml:"dependencies"`
 	Meta           MetaInfo `json:"meta" yaml:"meta"`
 	Specifications SpecInfo `json:"spec" yaml:"spec"`
-}
-
-type AtkModuleRunner interface {
-	ListParams() ([]string, error)
-	ValidateParam(name string, value string) (bool, error)
-	PreDeploy(ctx context.Context) error
-	Deploy(ctx context.Context) error
-	PostDeploy(ctx context.Context) error
 }
 
 type CliParts struct {
@@ -139,30 +131,30 @@ func NewPodmanCliCommandBuilder() *PodmanCliCommandBuilder {
 	}
 }
 
-type AtkRunCfg struct {
-	Stdout io.Writer
-	Stderr io.Writer
-	Logger *logger.Logger
+type RunContext struct {
+	In  io.Reader
+	Out io.Writer
+	Log logger.Logger
+	Err io.Writer
 }
 
 type CliModuleRunner struct {
-	AtkRunCfg
 	PodmanCliCommandBuilder
 }
 
 // RunImage
-func (r *CliModuleRunner) Run(ctx context.Context, info ImageInfo) error {
+func (r *CliModuleRunner) Run(ctx *RunContext, info ImageInfo) error {
 	cmdStr, err := r.BuildFrom(info)
 	if err != nil {
 		return err
 	}
 
-	r.Logger.Infof("running command: %s", cmdStr)
+	ctx.Log.Infof("running command: %s", cmdStr)
 	// TODO: Here we will actually run the command.
 	cmdParts := strings.Split(cmdStr, " ")
 	runCmd := exec.Command(cmdParts[0], cmdParts[1:]...)
-	runCmd.Stdout = r.Stdout
-	runCmd.Stderr = r.Stderr
+	runCmd.Stdout = ctx.Out
+	runCmd.Stderr = ctx.Err
 
 	err = runCmd.Run()
 
@@ -174,6 +166,7 @@ type Status string
 const (
 	None          Status = "none"
 	Invalid       Status = "invalid"
+	Initializing  Status = "initializing"
 	Configured    Status = "configured"
 	Validated     Status = "validated"
 	PreDeploying  Status = "predeploying"
@@ -186,103 +179,161 @@ const (
 	Errored       Status = "errored"
 )
 
-type RunFunc func()
-
-type ModState struct {
-	Previous Status
-	Current  Status
-	Handler  RunFunc
-	Next     Status
+var DefaultOrder []Status = []Status{
+	Invalid,
+	Initializing,
+	Configured,
+	Validated,
+	PreDeploying,
+	PreDeployed,
+	Deploying,
+	Deployed,
+	PostDeploying,
+	PostDeployed,
+	Done,
 }
 
-type AtkDepoyableModule struct {
-	AtkModule
-	ModState
-	CliModuleRunner
+type StateHandler func(ctx *RunContext, notifier Notifier) error
+
+func NoopHandler(ctx *RunContext, notifier Notifier) error {
+	notifier.Notify(Invalid)
+	return nil
 }
 
-func (m *AtkDepoyableModule) updateState(state Status) {
-	m.Previous = m.Current
-	m.Current = state
+type Notifier interface {
+	Status() Status
+	Notify(Status) error
 }
 
-func (m *AtkDepoyableModule) ListParams() ([]string, error) { return []string{""}, nil }
-
-func (m *AtkDepoyableModule) ValidateParam(name string, value string) (bool, error) {
-	return false, nil
+type HandlerCommander interface {
+	AddHandler(Status, StateHandler) error
+	GetHandlerFor(Status) StateHandler
+	Next() (StateHandler, bool)
 }
 
-func (m *AtkDepoyableModule) PreDeploy(ctx context.Context) error {
-	m.updateState(PreDeploying)
-	err := m.Run(ctx, m.Specifications.PreDeploy)
-	if err != nil {
-		m.updateState(Errored)
+type DeployableModule struct {
+	module    *ModuleInfo
+	cli       *CliModuleRunner
+	handlers  map[Status]StateHandler
+	previous  Status
+	current   Status
+	execOrder []Status
+}
+
+func (m *DeployableModule) Status() Status {
+	return m.current
+}
+
+func (m *DeployableModule) Notify(state Status) error {
+	m.previous = m.current
+	m.current = state
+	return nil
+}
+
+func (m *DeployableModule) AddHandler(status Status, handler StateHandler) error {
+	if m.handlers[status] == nil {
+		m.handlers[status] = handler
+		return nil
 	} else {
-		m.updateState(PreDeployed)
+		return fmt.Errorf("handler for state %s already exists", status)
+	}
+}
+
+func (m *DeployableModule) GetHandlerFor(status Status) StateHandler {
+	return m.handlers[status]
+}
+
+func (m *DeployableModule) Next() (StateHandler, bool) {
+	for idx, status := range m.execOrder {
+		if m.current == status {
+			return m.GetHandlerFor(m.execOrder[idx+1]), true
+		}
+	}
+	return NoopHandler, false
+}
+
+func (m *DeployableModule) preDeploy(ctx *RunContext, notifier Notifier) error {
+	notifier.Notify(PreDeploying)
+	err := m.cli.Run(ctx, m.module.Specifications.PreDeploy)
+	if err != nil {
+		notifier.Notify(Errored)
+	} else {
+		notifier.Notify(PreDeployed)
 	}
 	return err
 }
 
-func (m *AtkDepoyableModule) Deploy(ctx context.Context) error {
-	m.updateState(Deploying)
-	err := m.Run(ctx, m.Specifications.Deploy)
+func (m *DeployableModule) deploy(ctx *RunContext, notifier Notifier) error {
+	notifier.Notify(Deploying)
+	err := m.cli.Run(ctx, m.module.Specifications.Deploy)
 	if err != nil {
-		m.updateState(Errored)
+		notifier.Notify(Errored)
 	} else {
-		m.updateState(Deployed)
+		notifier.Notify(Deployed)
 	}
 	return err
 }
 
-func (m *AtkDepoyableModule) PostDeploy(ctx context.Context) error {
-	m.updateState(PostDeploying)
-	err := m.Run(ctx, m.Specifications.PostDeploy)
+func (m *DeployableModule) postDeploy(ctx *RunContext, notifier Notifier) error {
+	notifier.Notify(PostDeploying)
+	err := m.cli.Run(ctx, m.module.Specifications.PostDeploy)
 	if err != nil {
-		m.updateState(Errored)
+		notifier.Notify(Errored)
 	} else {
-		m.updateState(PostDeployed)
+		notifier.Notify(PostDeployed)
 	}
 	return err
 }
 
-func (m *AtkDepoyableModule) IsErrored() bool {
-	return m.Current == Errored
+func (m *DeployableModule) resolveState(ctx *RunContext, notifier Notifier) error {
+	// err := m.cli.Run(ctx, m.module.Specifications.PostDeploy)
+	// TODO: From this one, we grab the output from the context and
+	// use that to notify the state of the current module
+	notifier.Notify(Configured)
+	return nil
 }
 
-func NewAtkDeployableModule(ctx context.Context, runCfg *AtkRunCfg, module *AtkModule) *AtkDepoyableModule {
+func (m *DeployableModule) IsErrored() bool {
+	return m.current == Errored
+}
+
+func NewDeployableModule(ctx context.Context, runCtx *RunContext, module *ModuleInfo) *DeployableModule {
 	builder := NewPodmanCliCommandBuilder()
 	cwd := fmt.Sprintf("%s", ctx.Value(BaseDirectory))
 	if len(cwd) == 0 {
 		cwd, _ = os.Getwd()
 	}
 	builder = builder.WithVolume(cwd)
-	runner := &CliModuleRunner{
-		*runCfg,
-		*builder,
+
+	deployment := &DeployableModule{
+		module:    module,
+		cli:       &CliModuleRunner{*builder},
+		execOrder: DefaultOrder,
+		current:   Invalid,
+		handlers:  make(map[Status]StateHandler),
 	}
-	obj := &AtkDepoyableModule{
-		*module,
-		ModState{
-			Previous: None,
-			Current:  Invalid,
-		},
-		*runner,
-	}
-	return obj
+
+	// Now configure the handlers for the module deployment
+	deployment.AddHandler(PreDeploying, deployment.preDeploy)
+	deployment.AddHandler(Deploying, deployment.deploy)
+	deployment.AddHandler(PostDeploying, deployment.postDeploy)
+	deployment.AddHandler(Initializing, deployment.resolveState)
+
+	return deployment
 }
 
-type AtkModuleLoader interface {
-	Load(uri string) (AtkModule, error)
+type ModuleLoader interface {
+	Load(uri string) (ModuleInfo, error)
 }
 
-type AtkManifestFileLoader struct {
+type ManifestFileLoader struct {
 	path string
 }
 
-func (l *AtkManifestFileLoader) Load(uri string) (*AtkModule, error) {
+func (l *ManifestFileLoader) Load(uri string) (*ModuleInfo, error) {
 	l.path = uri
 	logger.Debug("Loading module from manifest file")
-	var module *AtkModule = &AtkModule{}
+	var module *ModuleInfo = &ModuleInfo{}
 	yamlFile, err := ioutil.ReadFile(uri)
 	if err != nil {
 		return nil, err
@@ -292,6 +343,6 @@ func (l *AtkManifestFileLoader) Load(uri string) (*AtkModule, error) {
 
 }
 
-func NewAtkManifestFileLoader() *AtkManifestFileLoader {
-	return &AtkManifestFileLoader{}
+func NewAtkManifestFileLoader() *ManifestFileLoader {
+	return &ManifestFileLoader{}
 }
