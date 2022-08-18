@@ -46,9 +46,10 @@ func TestRunDeployment(t *testing.T) {
 	deployment := atk.NewDeployableModule(ctx, runCtx, module)
 	// For the test purposes, let us just start out with this ready to pre-deploy
 	deployment.Notify(atk.Validated)
-	handler, exists := deployment.Next()
-
-	handler(runCtx, deployment)
+	// Gets the correct command for the current state
+	cmd, exists := deployment.Next()
+	// Now runs the command
+	cmd(runCtx, deployment)
 
 	assert.True(t, exists)
 	assert.Equal(t, 1, len(hook.Entries))

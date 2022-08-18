@@ -49,6 +49,7 @@ type MetaInfo struct {
 }
 
 type SpecInfo struct {
+	GetState   ImageInfo `json:"get_state" yaml:"get_state"`
 	PreDeploy  ImageInfo `json:"pre_deploy" yaml:"pre_deploy"`
 	Deploy     ImageInfo `json:"deploy" yaml:"deploy"`
 	PostDeploy ImageInfo `json:"post_deploy" yaml:"post_deploy"`
@@ -59,7 +60,6 @@ type ModuleInfo struct {
 	Name           string   `json:"name" yaml:"name"`
 	Version        string   `json:"version" yaml:"version"`
 	TemplateUrl    string   `json:"template_url" yaml:"template_url"`
-	Facets         []string `json:"facets" yaml:"facets"`
 	Dependencies   []string `json:"dependencies" yaml:"dependencies"`
 	Meta           MetaInfo `json:"meta" yaml:"meta"`
 	Specifications SpecInfo `json:"spec" yaml:"spec"`
@@ -132,10 +132,24 @@ func NewPodmanCliCommandBuilder() *PodmanCliCommandBuilder {
 }
 
 type RunContext struct {
-	In  io.Reader
-	Out io.Writer
-	Log logger.Logger
-	Err io.Writer
+	In     io.Reader
+	Out    io.Writer
+	Log    logger.Logger
+	Err    io.Writer
+	Errors []error
+}
+
+// AddError adds an error to the context
+func (c *RunContext) AddError(err error) {
+	if c.Errors == nil {
+		c.Errors = make([]error, 0)
+	}
+	c.Errors = append(c.Errors, err)
+}
+
+// IsErrored returns true if there are errors in the context
+func (c *RunContext) IsErrored() bool {
+	return len(c.Errors) > 0
 }
 
 type CliModuleRunner struct {
@@ -161,25 +175,25 @@ func (r *CliModuleRunner) Run(ctx *RunContext, info ImageInfo) error {
 	return err
 }
 
-type Status string
+type State string
 
 const (
-	None          Status = "none"
-	Invalid       Status = "invalid"
-	Initializing  Status = "initializing"
-	Configured    Status = "configured"
-	Validated     Status = "validated"
-	PreDeploying  Status = "predeploying"
-	PreDeployed   Status = "predeployed"
-	Deploying     Status = "deploying"
-	Deployed      Status = "deployed"
-	PostDeploying Status = "postdeploying"
-	PostDeployed  Status = "postdeployed"
-	Done          Status = PostDeployed
-	Errored       Status = "errored"
+	None          State = "none"
+	Invalid       State = "invalid"
+	Initializing  State = "initializing"
+	Configured    State = "configured"
+	Validated     State = "validated"
+	PreDeploying  State = "predeploying"
+	PreDeployed   State = "predeployed"
+	Deploying     State = "deploying"
+	Deployed      State = "deployed"
+	PostDeploying State = "postdeploying"
+	PostDeployed  State = "postdeployed"
+	Done          State = PostDeployed
+	Errored       State = "errored"
 )
 
-var DefaultOrder []Status = []Status{
+var DefaultOrder []State = []State{
 	Invalid,
 	Initializing,
 	Configured,
@@ -193,60 +207,74 @@ var DefaultOrder []Status = []Status{
 	Done,
 }
 
-type StateHandler func(ctx *RunContext, notifier Notifier) error
+// StateCmd is an implementation of a Command pattern
+type StateCmd func(ctx *RunContext, notifier Notifier) error
 
+// NoopHandler is an implementation of the Null Object pattern.
+// It does nothing except to insure we don't return a nil.
 func NoopHandler(ctx *RunContext, notifier Notifier) error {
 	notifier.Notify(Invalid)
 	return nil
 }
 
 type Notifier interface {
-	Status() Status
-	Notify(Status) error
+	State() State
+	Notify(State) error
+	NotifyErr(State, error)
 }
 
-type HandlerCommander interface {
-	AddHandler(Status, StateHandler) error
-	GetHandlerFor(Status) StateHandler
-	Next() (StateHandler, bool)
+type StateCmder interface {
+	AddCmd(State, StateCmd) error
+	GetCmdFor(State) StateCmd
+}
+
+type CmdItr interface {
+	Next() (StateCmd, bool)
 }
 
 type DeployableModule struct {
 	module    *ModuleInfo
 	cli       *CliModuleRunner
-	handlers  map[Status]StateHandler
-	previous  Status
-	current   Status
-	execOrder []Status
+	runCtx    RunContext
+	cmds      map[State]StateCmd
+	previous  State
+	current   State
+	execOrder []State
 }
 
-func (m *DeployableModule) Status() Status {
+func (m *DeployableModule) State() State {
 	return m.current
 }
 
-func (m *DeployableModule) Notify(state Status) error {
+func (m *DeployableModule) Notify(state State) error {
 	m.previous = m.current
 	m.current = state
 	return nil
 }
 
-func (m *DeployableModule) AddHandler(status Status, handler StateHandler) error {
-	if m.handlers[status] == nil {
-		m.handlers[status] = handler
+func (m *DeployableModule) NotifyErr(state State, err error) {
+	m.runCtx.AddError(err)
+	m.previous = m.current
+	m.current = state
+}
+
+func (m *DeployableModule) AddCmd(status State, handler StateCmd) error {
+	if m.cmds[status] == nil {
+		m.cmds[status] = handler
 		return nil
 	} else {
 		return fmt.Errorf("handler for state %s already exists", status)
 	}
 }
 
-func (m *DeployableModule) GetHandlerFor(status Status) StateHandler {
-	return m.handlers[status]
+func (m *DeployableModule) GetCmdFor(status State) StateCmd {
+	return m.cmds[status]
 }
 
-func (m *DeployableModule) Next() (StateHandler, bool) {
-	for idx, status := range m.execOrder {
-		if m.current == status {
-			return m.GetHandlerFor(m.execOrder[idx+1]), true
+func (m *DeployableModule) Next() (StateCmd, bool) {
+	for idx, state := range m.execOrder {
+		if m.current == state {
+			return m.GetCmdFor(m.execOrder[idx+1]), true
 		}
 	}
 	return NoopHandler, false
@@ -308,16 +336,17 @@ func NewDeployableModule(ctx context.Context, runCtx *RunContext, module *Module
 	deployment := &DeployableModule{
 		module:    module,
 		cli:       &CliModuleRunner{*builder},
+		runCtx:    *runCtx,
 		execOrder: DefaultOrder,
 		current:   Invalid,
-		handlers:  make(map[Status]StateHandler),
+		cmds:      make(map[State]StateCmd),
 	}
 
-	// Now configure the handlers for the module deployment
-	deployment.AddHandler(PreDeploying, deployment.preDeploy)
-	deployment.AddHandler(Deploying, deployment.deploy)
-	deployment.AddHandler(PostDeploying, deployment.postDeploy)
-	deployment.AddHandler(Initializing, deployment.resolveState)
+	// Now configure the cmds for the module deployment
+	deployment.AddCmd(PreDeploying, deployment.preDeploy)
+	deployment.AddCmd(Deploying, deployment.deploy)
+	deployment.AddCmd(PostDeploying, deployment.postDeploy)
+	deployment.AddCmd(Initializing, deployment.resolveState)
 
 	return deployment
 }

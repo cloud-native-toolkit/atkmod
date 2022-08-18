@@ -17,8 +17,6 @@ func TestCreateFromFile(t *testing.T) {
 	assert.Equal(t, "0.1", module.Version)
 	assert.Equal(t, "https://github.com/someorg/someproject", module.TemplateUrl)
 	assert.Equal(t, "None", module.Dependencies[0])
-	assert.Equal(t, "terraform", module.Facets[0])
-	assert.Equal(t, "travisci", module.Facets[1])
 
 	assert.Equal(t, "something/parameter-lister:latest", module.Meta.Params.List.Image)
 	assert.Equal(t, "echo \"Running list\"", module.Meta.Params.List.Commands[0])
@@ -27,6 +25,8 @@ func TestCreateFromFile(t *testing.T) {
 
 	assert.Equal(t, "something/parameter-validator:latest", module.Meta.Params.Validate.Image)
 	assert.Equal(t, "echo \"Running validate\"", module.Meta.Params.Validate.Commands[0])
+
+	assert.Equal(t, "something/get-stater:latest", module.Specifications.GetState.Image)
 
 	assert.Equal(t, "something/pre-deployer:latest", module.Specifications.PreDeploy.Image)
 	assert.Equal(t, "echo \"Running pre-deploy\"", module.Specifications.PreDeploy.Commands[0])

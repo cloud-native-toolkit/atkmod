@@ -1,22 +1,12 @@
 id: my-base-project
-# This is the name of the project
 name: My Base Project
-# The version of this file spec
 version: 0.1
-# The URL to the .git repo that is the template for this project.
 template_url: https://github.com/someorg/someproject
-
-facets:
-  - terraform
-  - travisci
-
 dependencies:
   - None
 
 meta:
-
   params:
-
     list:
       img: localhost/atk-lister:latest
       env:
@@ -27,6 +17,8 @@ meta:
       img: localhost/atk-validator
 
 spec:
+  get_state:
+    img: localhost/atk-deployer
 
   pre_deploy:
     img: docker.io/library/alpine:3.16
