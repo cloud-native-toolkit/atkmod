@@ -1,4 +1,4 @@
-module github.ibm.com/Nathan-Good/atkmod
+module github.ibm.com/skol/atkmod
 
 go 1.18
 
