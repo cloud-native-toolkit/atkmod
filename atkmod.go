@@ -65,6 +65,7 @@ type ModuleInfo struct {
 	Specifications SpecInfo `json:"spec" yaml:"spec"`
 }
 
+// CliParts represents the parts of the entire podman command line.
 type CliParts struct {
 	Path     string
 	Cmd      string
@@ -73,29 +74,39 @@ type CliParts struct {
 	Workdir  string
 	Localdir string
 	Envvars  []EnvVarInfo
-	// TODO: Add command support
+	// TODO: Add command support that will be used instead of an entrypoint
 	Commands []string
 }
 
+// PodmanCliCommandBuilder allows you to build the podman command in a
+// way that is already unit tested and verified so that you do not have to
+// append your own strings or do variable interpolation.
 type PodmanCliCommandBuilder struct {
 	parts CliParts
 }
 
+// WithPath allows you to override the default path of /usr/local/bin/podman
+// for podman.
 func (b *PodmanCliCommandBuilder) WithPath(path string) *PodmanCliCommandBuilder {
 	b.parts.Path = path
 	return b
 }
 
+// WithImage specifies the container image used in the command.
 func (b *PodmanCliCommandBuilder) WithImage(imageName string) *PodmanCliCommandBuilder {
 	b.parts.Image = imageName
 	return b
 }
 
+// WithVolume adds the given volume as an argument to the command.
 func (b *PodmanCliCommandBuilder) WithVolume(localdir string) *PodmanCliCommandBuilder {
 	b.parts.Localdir = localdir
 	return b
 }
 
+// WithEnvvar adds the given environment variable and value to the command.
+// It is the same thing as adding -e ENVAR=value as a parameter to the
+// container command.
 func (b *PodmanCliCommandBuilder) WithEnvvar(name string, value string) *PodmanCliCommandBuilder {
 	envar := &EnvVarInfo{
 		Name:  name,
@@ -105,6 +116,7 @@ func (b *PodmanCliCommandBuilder) WithEnvvar(name string, value string) *PodmanC
 	return b
 }
 
+// Build builds the command line for the container command
 func (b *PodmanCliCommandBuilder) Build() (string, error) {
 	buf := new(bytes.Buffer)
 	tmpl, err := template.New("cli").Parse("{{.Path}} {{.Cmd}} {{range .Flags}}{{.}} {{end}}-v {{.Localdir}}:{{.Workdir}} {{range .Envvars}}-e {{.}} {{end}}{{.Image}}")
@@ -124,6 +136,10 @@ func (b *PodmanCliCommandBuilder) BuildFrom(info ImageInfo) (string, error) {
 	return b.Build()
 }
 
+// NewPodmanCliCommandBuilder creates a new PodmanCliCommandBuilder
+// with the given configuration. If there is no configuration provided
+// (nil), or if certain values are not defined, then the constructor
+// will provide reasonable defaults.
 func NewPodmanCliCommandBuilder(cli *CliParts) *PodmanCliCommandBuilder {
 	defaults := cli
 	if defaults == nil {
@@ -187,7 +203,7 @@ func (r *CliModuleRunner) runCmd(ctx *RunContext, cmd string) error {
 	return err
 }
 
-// RunImage
+// RunImage runs the container that is defined in the provided ImageInfo
 func (r *CliModuleRunner) RunImage(ctx *RunContext, info ImageInfo) error {
 	cmdStr, err := r.BuildFrom(info)
 	if err != nil {
@@ -198,7 +214,7 @@ func (r *CliModuleRunner) RunImage(ctx *RunContext, info ImageInfo) error {
 	return r.runCmd(ctx, cmdStr)
 }
 
-// Run
+// Run runs the container that has been defined in the builder setup.
 func (r *CliModuleRunner) Run(ctx *RunContext) error {
 	cmdStr, err := r.Build()
 	if err != nil {
