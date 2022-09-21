@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"html/template"
 	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
+	"text/template"
 
 	logger "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
@@ -119,10 +119,10 @@ func (b *PodmanCliCommandBuilder) WithEnvvar(name string, value string) *PodmanC
 // Build builds the command line for the container command
 func (b *PodmanCliCommandBuilder) Build() (string, error) {
 	buf := new(bytes.Buffer)
-	tmpl, err := template.New("cli").Parse("{{.Path}} {{.Cmd}} {{range .Flags}}{{.}} {{end}}-v {{.Localdir}}:{{.Workdir}} {{range .Envvars}}-e {{.}} {{end}}{{.Image}}")
+	tmpl, err := template.New("cli").Parse("{{.Path}} {{.Cmd}}{{- range .Flags}} {{.}}{{end}}{{- if .Localdir}} -v {{.Localdir}}:{{.Workdir}}{{end}}{{range .Envvars}} -e {{.}}{{end}}{{if .Image}} {{.Image}}{{end}}")
 	if err == nil {
 		tmpl.Execute(buf, b.parts)
-		return buf.String(), nil
+		return strings.TrimSpace(buf.String()), nil
 	}
 
 	return "", err
@@ -145,7 +145,7 @@ func NewPodmanCliCommandBuilder(cli *CliParts) *PodmanCliCommandBuilder {
 	if defaults == nil {
 		defaults = &CliParts{}
 	}
-	defaultFlags := []string{"--rm"}
+	defaultFlags := make([]string, 0)
 	parts := &CliParts{
 		Path:    Iif(defaults.Path, "/usr/local/bin/podman"),
 		Cmd:     Iif(defaults.Cmd, "run"),

@@ -12,7 +12,7 @@ build-test-images:
 	cd $(TEST_C_DIR)/postdeploy && $(IMG_BUILDER) build -t atk-postdeployer .
 
 test-all: build-test-images
-	@go test github.ibm.com/Nathan-Good/atkmod/test
+	@go test github.ibm.com/skol/atkmod/test
 
 build-all:
 	go build

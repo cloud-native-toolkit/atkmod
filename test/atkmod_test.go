@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	atk "github.ibm.com/Nathan-Good/atkmod"
+	atk "github.ibm.com/skol/atkmod"
 )
 
 func TestCreateFromFile(t *testing.T) {
