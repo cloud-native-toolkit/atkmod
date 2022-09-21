@@ -3,6 +3,7 @@ TEST_C_DIR := test/containers
 
 build-test-images:
 	@echo "Creating the test images..."
+	cd $(TEST_C_DIR)/error && $(IMG_BUILDER) build -t atk-errer .
 	cd $(TEST_C_DIR)/paramlist && $(IMG_BUILDER) build -t atk-lister .
 	cd $(TEST_C_DIR)/paramvalidate && $(IMG_BUILDER) build -t atk-validator .
 

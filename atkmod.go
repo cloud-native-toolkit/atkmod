@@ -66,6 +66,7 @@ type ModuleInfo struct {
 }
 
 type CliParts struct {
+	Path     string
 	Cmd      string
 	Image    string
 	Flags    []string
@@ -78,6 +79,11 @@ type CliParts struct {
 
 type PodmanCliCommandBuilder struct {
 	parts CliParts
+}
+
+func (b *PodmanCliCommandBuilder) WithPath(path string) *PodmanCliCommandBuilder {
+	b.parts.Path = path
+	return b
 }
 
 func (b *PodmanCliCommandBuilder) WithImage(imageName string) *PodmanCliCommandBuilder {
@@ -101,7 +107,7 @@ func (b *PodmanCliCommandBuilder) WithEnvvar(name string, value string) *PodmanC
 
 func (b *PodmanCliCommandBuilder) Build() (string, error) {
 	buf := new(bytes.Buffer)
-	tmpl, err := template.New("cli").Parse("/usr/local/bin/podman {{.Cmd}} {{range .Flags}}{{.}} {{end}}-v {{.Localdir}}:{{.Workdir}} {{range .Envvars}}-e {{.}} {{end}}{{.Image}}")
+	tmpl, err := template.New("cli").Parse("{{.Path}} {{.Cmd}} {{range .Flags}}{{.}} {{end}}-v {{.Localdir}}:{{.Workdir}} {{range .Envvars}}-e {{.}} {{end}}{{.Image}}")
 	if err == nil {
 		tmpl.Execute(buf, b.parts)
 		return buf.String(), nil
@@ -118,17 +124,29 @@ func (b *PodmanCliCommandBuilder) BuildFrom(info ImageInfo) (string, error) {
 	return b.Build()
 }
 
-func NewPodmanCliCommandBuilder() *PodmanCliCommandBuilder {
-	// TODO: Load from some type of default or configuration
+func NewPodmanCliCommandBuilder(cli *CliParts) *PodmanCliCommandBuilder {
+	defaults := cli
+	if defaults == nil {
+		defaults = &CliParts{}
+	}
+	defaultFlags := []string{"--rm"}
 	parts := &CliParts{
-		Cmd:     "run",
-		Workdir: "/workspace",
-		Flags:   []string{"--rm"},
-		Envvars: []EnvVarInfo{},
+		Path:    Iif(defaults.Path, "/usr/local/bin/podman"),
+		Cmd:     Iif(defaults.Cmd, "run"),
+		Workdir: Iif(defaults.Workdir, "/workspace"),
+		Flags:   append(defaults.Flags, defaultFlags...),
+		Envvars: defaults.Envvars,
 	}
 	return &PodmanCliCommandBuilder{
 		parts: *parts,
 	}
+}
+
+func Iif(value string, orValue string) string {
+	if len(strings.TrimSpace(value)) == 0 {
+		return orValue
+	}
+	return value
 }
 
 type RunContext struct {
@@ -156,23 +174,39 @@ type CliModuleRunner struct {
 	PodmanCliCommandBuilder
 }
 
-// RunImage
-func (r *CliModuleRunner) Run(ctx *RunContext, info ImageInfo) error {
-	cmdStr, err := r.BuildFrom(info)
-	if err != nil {
-		return err
-	}
-
-	ctx.Log.Infof("running command: %s", cmdStr)
-	// TODO: Here we will actually run the command.
-	cmdParts := strings.Split(cmdStr, " ")
+func (r *CliModuleRunner) runCmd(ctx *RunContext, cmd string) error {
+	ctx.Log.Infof("running command: %s", cmd)
+	cmdParts := strings.Split(cmd, " ")
 	runCmd := exec.Command(cmdParts[0], cmdParts[1:]...)
 	runCmd.Stdout = ctx.Out
 	runCmd.Stderr = ctx.Err
-
-	err = runCmd.Run()
-
+	err := runCmd.Run()
+	if err != nil {
+		ctx.AddError(err)
+	}
 	return err
+}
+
+// RunImage
+func (r *CliModuleRunner) RunImage(ctx *RunContext, info ImageInfo) error {
+	cmdStr, err := r.BuildFrom(info)
+	if err != nil {
+		ctx.AddError(err)
+		return err
+	}
+
+	return r.runCmd(ctx, cmdStr)
+}
+
+// Run
+func (r *CliModuleRunner) Run(ctx *RunContext) error {
+	cmdStr, err := r.Build()
+	if err != nil {
+		ctx.AddError(err)
+		return err
+	}
+
+	return r.runCmd(ctx, cmdStr)
 }
 
 type State string
@@ -282,7 +316,7 @@ func (m *DeployableModule) Next() (StateCmd, bool) {
 
 func (m *DeployableModule) preDeploy(ctx *RunContext, notifier Notifier) error {
 	notifier.Notify(PreDeploying)
-	err := m.cli.Run(ctx, m.module.Specifications.PreDeploy)
+	err := m.cli.RunImage(ctx, m.module.Specifications.PreDeploy)
 	if err != nil {
 		notifier.Notify(Errored)
 	} else {
@@ -293,7 +327,7 @@ func (m *DeployableModule) preDeploy(ctx *RunContext, notifier Notifier) error {
 
 func (m *DeployableModule) deploy(ctx *RunContext, notifier Notifier) error {
 	notifier.Notify(Deploying)
-	err := m.cli.Run(ctx, m.module.Specifications.Deploy)
+	err := m.cli.RunImage(ctx, m.module.Specifications.Deploy)
 	if err != nil {
 		notifier.Notify(Errored)
 	} else {
@@ -304,7 +338,7 @@ func (m *DeployableModule) deploy(ctx *RunContext, notifier Notifier) error {
 
 func (m *DeployableModule) postDeploy(ctx *RunContext, notifier Notifier) error {
 	notifier.Notify(PostDeploying)
-	err := m.cli.Run(ctx, m.module.Specifications.PostDeploy)
+	err := m.cli.RunImage(ctx, m.module.Specifications.PostDeploy)
 	if err != nil {
 		notifier.Notify(Errored)
 	} else {
@@ -314,7 +348,7 @@ func (m *DeployableModule) postDeploy(ctx *RunContext, notifier Notifier) error 
 }
 
 func (m *DeployableModule) resolveState(ctx *RunContext, notifier Notifier) error {
-	// err := m.cli.Run(ctx, m.module.Specifications.PostDeploy)
+	// err := m.cli.RunImage(ctx, m.module.Specifications.PostDeploy)
 	// TODO: From this one, we grab the output from the context and
 	// use that to notify the state of the current module
 	notifier.Notify(Configured)
@@ -326,7 +360,7 @@ func (m *DeployableModule) IsErrored() bool {
 }
 
 func NewDeployableModule(ctx context.Context, runCtx *RunContext, module *ModuleInfo) *DeployableModule {
-	builder := NewPodmanCliCommandBuilder()
+	builder := NewPodmanCliCommandBuilder(nil)
 	cwd := fmt.Sprintf("%s", ctx.Value(BaseDirectory))
 	if len(cwd) == 0 {
 		cwd, _ = os.Getwd()
