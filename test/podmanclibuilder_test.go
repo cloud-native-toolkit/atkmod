@@ -11,13 +11,38 @@ func TestBuildRun(t *testing.T) {
 
 	builder := atk.NewPodmanCliCommandBuilder(nil)
 
-	actual, err := builder.WithVolume("/home/myuser/workdir").
+	actual, err := builder.WithWorkspace("/home/myuser/workdir").
 		WithImage("localhost/myimage").
 		WithEnvvar("MYVAR", "thisismyvalue").
 		Build()
 
 	assert.Nil(t, err)
 	assert.Equal(t, "/usr/local/bin/podman run -v /home/myuser/workdir:/workspace -e MYVAR=thisismyvalue localhost/myimage", actual)
+
+}
+
+func TestBuildRunWithVolumes(t *testing.T) {
+	builder := atk.NewPodmanCliCommandBuilder(nil)
+	actual, err := builder.
+		WithImage("localhost/myimage").
+		WithEnvvar("MYVAR", "thisismyvalue").
+		WithVolume("/tmp/data", "/var/app/db").
+		Build()
+
+	assert.Nil(t, err)
+	assert.Equal(t, "/usr/local/bin/podman run -v /tmp/data:/var/app/db -e MYVAR=thisismyvalue localhost/myimage", actual)
+
+}
+
+func TestBuildRunWithPorts(t *testing.T) {
+	builder := atk.NewPodmanCliCommandBuilder(nil)
+	actual, err := builder.
+		WithImage("localhost/myimage").
+		WithPort("80", "8080").
+		Build()
+
+	assert.Nil(t, err)
+	assert.Equal(t, "/usr/local/bin/podman run -p 80:8080 localhost/myimage", actual)
 
 }
 
@@ -32,7 +57,7 @@ func TestBuildFrom(t *testing.T) {
 		},
 	}
 
-	actual, err := builder.WithVolume("/home/myuser/workdir").
+	actual, err := builder.WithWorkspace("/home/myuser/workdir").
 		BuildFrom(*imageInfo)
 
 	assert.Nil(t, err)
@@ -57,7 +82,7 @@ func TestProvideOverrides(t *testing.T) {
 		},
 	}
 
-	actual, err := builder.WithVolume("/home/myuser/workdir").
+	actual, err := builder.WithWorkspace("/home/myuser/workdir").
 		BuildFrom(*imageInfo)
 
 	assert.Nil(t, err)

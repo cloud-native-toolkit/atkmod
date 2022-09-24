@@ -67,13 +67,14 @@ type ModuleInfo struct {
 
 // CliParts represents the parts of the entire podman command line.
 type CliParts struct {
-	Path     string
-	Cmd      string
-	Image    string
-	Flags    []string
-	Workdir  string
-	Localdir string
-	Envvars  []EnvVarInfo
+	Path    string
+	Cmd     string
+	Image   string
+	Flags   []string
+	Workdir string
+	Volumes map[string]string
+	Ports   map[string]string
+	Envvars []EnvVarInfo
 	// TODO: Add command support that will be used instead of an entrypoint
 	Commands []string
 }
@@ -98,9 +99,21 @@ func (b *PodmanCliCommandBuilder) WithImage(imageName string) *PodmanCliCommandB
 	return b
 }
 
-// WithVolume adds the given volume as an argument to the command.
-func (b *PodmanCliCommandBuilder) WithVolume(localdir string) *PodmanCliCommandBuilder {
-	b.parts.Localdir = localdir
+// WithWorkspace is a shortcut to adding a local path to the "workspace" on
+// the container.
+func (b *PodmanCliCommandBuilder) WithWorkspace(localdir string) *PodmanCliCommandBuilder {
+	return b.WithVolume(localdir, b.parts.Workdir)
+}
+
+// WithVolume adds a volume mapping to the command.
+func (b *PodmanCliCommandBuilder) WithVolume(localdir string, containerdir string) *PodmanCliCommandBuilder {
+	b.parts.Volumes[localdir] = containerdir
+	return b
+}
+
+// WithPort adds a port mapping to the command
+func (b *PodmanCliCommandBuilder) WithPort(localport string, containerport string) *PodmanCliCommandBuilder {
+	b.parts.Ports[localport] = containerport
 	return b
 }
 
@@ -119,13 +132,15 @@ func (b *PodmanCliCommandBuilder) WithEnvvar(name string, value string) *PodmanC
 // Build builds the command line for the container command
 func (b *PodmanCliCommandBuilder) Build() (string, error) {
 	buf := new(bytes.Buffer)
-	tmpl, err := template.New("cli").Parse("{{.Path}} {{.Cmd}}{{- range .Flags}} {{.}}{{end}}{{- if .Localdir}} -v {{.Localdir}}:{{.Workdir}}{{end}}{{range .Envvars}} -e {{.}}{{end}}{{if .Image}} {{.Image}}{{end}}")
-	if err == nil {
-		tmpl.Execute(buf, b.parts)
-		return strings.TrimSpace(buf.String()), nil
+	tmpl, err := template.New("cli").Parse("{{.Path}} {{.Cmd}}{{- range .Flags}} {{.}}{{end}}{{- range $k,$v := .Volumes}} -v {{$k}}:{{$v}}{{end}}{{- range $k,$v := .Ports}} -p {{$k}}:{{$v}}{{end}}{{range .Envvars}} -e {{.}}{{end}}{{if .Image}} {{.Image}}{{end}}")
+	if err != nil {
+		// This template is hardcoded here, so if it does not parse properly,
+		// we want the developer to know write away.
+		panic(err)
 	}
+	tmpl.Execute(buf, b.parts)
+	return strings.TrimSpace(buf.String()), nil
 
-	return "", err
 }
 
 func (b *PodmanCliCommandBuilder) BuildFrom(info ImageInfo) (string, error) {
@@ -152,6 +167,8 @@ func NewPodmanCliCommandBuilder(cli *CliParts) *PodmanCliCommandBuilder {
 		Workdir: Iif(defaults.Workdir, "/workspace"),
 		Flags:   append(defaults.Flags, defaultFlags...),
 		Envvars: defaults.Envvars,
+		Volumes: make(map[string]string, 0),
+		Ports:   make(map[string]string, 0),
 	}
 	return &PodmanCliCommandBuilder{
 		parts: *parts,
@@ -381,7 +398,7 @@ func NewDeployableModule(ctx context.Context, runCtx *RunContext, module *Module
 	if len(cwd) == 0 {
 		cwd, _ = os.Getwd()
 	}
-	builder = builder.WithVolume(cwd)
+	builder = builder.WithWorkspace(cwd)
 
 	deployment := &DeployableModule{
 		module:    module,

@@ -1,6 +1,7 @@
 package test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,5 +37,14 @@ func TestCreateFromFile(t *testing.T) {
 
 	assert.Equal(t, "something/post-deployer:latest", module.Specifications.PostDeploy.Image)
 	assert.Equal(t, "echo \"Running post-deploy\"", module.Specifications.PostDeploy.Commands[0])
+}
 
+func TestOutStringFromContext(t *testing.T) {
+	buf := new(bytes.Buffer)
+	ctx := &atk.RunContext{
+		Out: buf,
+	}
+
+	ctx.Out.Write([]byte("this is a string that I am writing to the context"))
+	assert.Equal(t, "this is a string that I am writing to the context", buf.String())
 }
