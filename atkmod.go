@@ -67,14 +67,16 @@ type ModuleInfo struct {
 
 // CliParts represents the parts of the entire podman command line.
 type CliParts struct {
-	Path    string
-	Cmd     string
-	Image   string
-	Flags   []string
-	Workdir string
-	Volumes map[string]string
-	Ports   map[string]string
-	Envvars []EnvVarInfo
+	Path             string
+	Cmd              string
+	Image            string
+	Flags            []string
+	Workdir          string
+	VolumeMaps       []string
+	DefaultVolumeOpt string
+	Ports            map[string]string
+	UidMaps          []string
+	Envvars          []EnvVarInfo
 	// TODO: Add command support that will be used instead of an entrypoint
 	Commands []string
 }
@@ -107,7 +109,24 @@ func (b *PodmanCliCommandBuilder) WithWorkspace(localdir string) *PodmanCliComma
 
 // WithVolume adds a volume mapping to the command.
 func (b *PodmanCliCommandBuilder) WithVolume(localdir string, containerdir string) *PodmanCliCommandBuilder {
-	b.parts.Volumes[localdir] = containerdir
+	return b.WithVolumeOpt(localdir, containerdir, "")
+}
+
+// WithVolume adds a volume mapping to the command.
+func (b *PodmanCliCommandBuilder) WithVolumeOpt(localdir string, containerdir string, option string) *PodmanCliCommandBuilder {
+	var volMap string
+	if len(option) > 0 {
+		volMap = fmt.Sprintf("%s:%s:%s", localdir, containerdir, option)
+	} else {
+		volMap = fmt.Sprintf("%s:%s", localdir, containerdir)
+	}
+	b.parts.VolumeMaps = append(b.parts.VolumeMaps, volMap)
+	return b
+}
+
+func (b *PodmanCliCommandBuilder) WithUserMap(localUser int, containerUser int, number int) *PodmanCliCommandBuilder {
+	mapstr := fmt.Sprintf("%d:%d:%d", containerUser, localUser, number)
+	b.parts.UidMaps = append(b.parts.UidMaps, mapstr)
 	return b
 }
 
@@ -132,7 +151,7 @@ func (b *PodmanCliCommandBuilder) WithEnvvar(name string, value string) *PodmanC
 // Build builds the command line for the container command
 func (b *PodmanCliCommandBuilder) Build() (string, error) {
 	buf := new(bytes.Buffer)
-	tmpl, err := template.New("cli").Parse("{{.Path}} {{.Cmd}}{{- range .Flags}} {{.}}{{end}}{{- range $k,$v := .Volumes}} -v {{$k}}:{{$v}}{{end}}{{- range $k,$v := .Ports}} -p {{$k}}:{{$v}}{{end}}{{range .Envvars}} -e {{.}}{{end}}{{if .Image}} {{.Image}}{{end}}")
+	tmpl, err := template.New("cli").Parse("{{.Path}} {{.Cmd}}{{- range .Flags}} {{.}}{{end}}{{- range .UidMaps}} --uidmap {{.}}{{end}}{{- range .VolumeMaps}} -v {{.}}{{end}}{{- range $k,$v := .Ports}} -p {{$k}}:{{$v}}{{end}}{{range .Envvars}} -e {{.}}{{end}}{{if .Image}} {{.Image}}{{end}}")
 	if err != nil {
 		// This template is hardcoded here, so if it does not parse properly,
 		// we want the developer to know write away.
@@ -162,13 +181,15 @@ func NewPodmanCliCommandBuilder(cli *CliParts) *PodmanCliCommandBuilder {
 	}
 	defaultFlags := make([]string, 0)
 	parts := &CliParts{
-		Path:    Iif(defaults.Path, "/usr/local/bin/podman"),
-		Cmd:     Iif(defaults.Cmd, "run"),
-		Workdir: Iif(defaults.Workdir, "/workspace"),
-		Flags:   append(defaults.Flags, defaultFlags...),
-		Envvars: defaults.Envvars,
-		Volumes: make(map[string]string, 0),
-		Ports:   make(map[string]string, 0),
+		Path:             Iif(defaults.Path, "/usr/local/bin/podman"),
+		Cmd:              Iif(defaults.Cmd, "run"),
+		Workdir:          Iif(defaults.Workdir, "/workspace"),
+		Flags:            append(defaults.Flags, defaultFlags...),
+		Envvars:          defaults.Envvars,
+		DefaultVolumeOpt: "Z",
+		VolumeMaps:       make([]string, 0),
+		Ports:            make(map[string]string, 0),
+		UidMaps:          make([]string, 0),
 	}
 	return &PodmanCliCommandBuilder{
 		parts: *parts,

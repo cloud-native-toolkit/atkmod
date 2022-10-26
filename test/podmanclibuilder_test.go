@@ -34,6 +34,18 @@ func TestBuildRunWithVolumes(t *testing.T) {
 
 }
 
+func TestBuildRunWithVolumeOpts(t *testing.T) {
+	builder := atk.NewPodmanCliCommandBuilder(nil)
+	actual, err := builder.
+		WithImage("localhost/myimage").
+		WithEnvvar("MYVAR", "thisismyvalue").
+		WithVolumeOpt("/tmp/data", "/var/app/db", "Z").
+		Build()
+
+	assert.Nil(t, err)
+	assert.Equal(t, "/usr/local/bin/podman run -v /tmp/data:/var/app/db:Z -e MYVAR=thisismyvalue localhost/myimage", actual)
+}
+
 func TestBuildRunWithPorts(t *testing.T) {
 	builder := atk.NewPodmanCliCommandBuilder(nil)
 	actual, err := builder.
@@ -43,6 +55,19 @@ func TestBuildRunWithPorts(t *testing.T) {
 
 	assert.Nil(t, err)
 	assert.Equal(t, "/usr/local/bin/podman run -p 80:8080 localhost/myimage", actual)
+
+}
+
+func TestBuildRunWithUidMap(t *testing.T) {
+	builder := atk.NewPodmanCliCommandBuilder(nil)
+	actual, err := builder.
+		WithImage("localhost/myimage").
+		WithUserMap(0, 1000, 1).
+		WithUserMap(1, 0, 1000).
+		Build()
+
+	assert.Nil(t, err)
+	assert.Equal(t, "/usr/local/bin/podman run --uidmap 1000:0:1 --uidmap 0:1:1000 localhost/myimage", actual)
 
 }
 
