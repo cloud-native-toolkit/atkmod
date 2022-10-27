@@ -30,9 +30,6 @@ name: My Base Project
 version: 0.1
 # The URL to the .git repo that is the template for this project.
 template_url: https://github.com/someorg/someproject
-# The module dependencies, or "None" if there are no dependencies.
-dependencies:
-  - None
 
 # Meta information about this project.
 meta:
