@@ -204,11 +204,12 @@ func Iif(value string, orValue string) string {
 }
 
 type RunContext struct {
-	In     io.Reader
-	Out    io.Writer
-	Log    logger.Logger
-	Err    io.Writer
-	Errors []error
+	In          io.Reader
+	Out         io.Writer
+	Log         logger.Logger
+	Err         io.Writer
+	Errors      []error
+	LastErrCode int
 }
 
 // AddError adds an error to the context
@@ -219,9 +220,17 @@ func (c *RunContext) AddError(err error) {
 	c.Errors = append(c.Errors, err)
 }
 
+func (c *RunContext) Reset() {
+	c.LastErrCode = 0
+}
+
+func (c *RunContext) SetLastErrCode(errCode int) {
+	c.LastErrCode = errCode
+}
+
 // IsErrored returns true if there are errors in the context
 func (c *RunContext) IsErrored() bool {
-	return len(c.Errors) > 0
+	return len(c.Errors) > 0 || c.LastErrCode != 0
 }
 
 type CliModuleRunner struct {
@@ -236,6 +245,9 @@ func (r *CliModuleRunner) runCmd(ctx *RunContext, cmd string) error {
 	runCmd.Stderr = ctx.Err
 	err := runCmd.Run()
 	if err != nil {
+		if exiterr, ok := err.(*exec.ExitError); ok {
+			ctx.SetLastErrCode(exiterr.ExitCode())
+		}
 		ctx.AddError(err)
 	}
 	return err
@@ -259,7 +271,8 @@ func (r *CliModuleRunner) Run(ctx *RunContext) error {
 		ctx.AddError(err)
 		return err
 	}
-
+	// Immediately before we run, we reset the context
+	ctx.Reset()
 	return r.runCmd(ctx, cmdStr)
 }
 

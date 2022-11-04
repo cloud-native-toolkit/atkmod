@@ -2,6 +2,7 @@ package test
 
 import (
 	"bytes"
+	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,4 +48,34 @@ func TestOutStringFromContext(t *testing.T) {
 
 	ctx.Out.Write([]byte("this is a string that I am writing to the context"))
 	assert.Equal(t, "this is a string that I am writing to the context", buf.String())
+}
+
+func TestLastErrCode(t *testing.T) {
+	defaults := &atk.CliParts{
+		Path: `/bin/ls`,
+		Cmd:  `moo`,
+	}
+
+	buf := new(bytes.Buffer)
+	ctx := &atk.RunContext{
+		Err: buf,
+	}
+	assert.Equal(t, 0, ctx.LastErrCode, "Should be zero after fresh creation.")
+
+	cli := atk.NewPodmanCliCommandBuilder(defaults)
+	runner := atk.CliModuleRunner{PodmanCliCommandBuilder: *cli}
+	runner.Run(ctx)
+	assert.Equal(t, "ls: moo: No such file or directory\n", buf.String())
+	cmdStr, _ := runner.Build()
+	assert.Equal(t, "/bin/ls moo", cmdStr)
+
+	assert.True(t, ctx.IsErrored())
+	assert.True(t, len(ctx.Errors) > 0)
+	expectedErr := ctx.Errors[0]
+	if exiterr, ok := expectedErr.(*exec.ExitError); ok {
+		assert.Equal(t, 1, exiterr.ExitCode())
+	} else {
+		assert.Fail(t, "Expected ExitError, got %T", expectedErr)
+	}
+
 }
