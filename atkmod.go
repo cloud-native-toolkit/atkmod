@@ -243,6 +243,7 @@ func (r *CliModuleRunner) runCmd(ctx *RunContext, cmd string) error {
 	runCmd := exec.Command(cmdParts[0], cmdParts[1:]...)
 	runCmd.Stdout = ctx.Out
 	runCmd.Stderr = ctx.Err
+	runCmd.Stdin = ctx.In
 	err := runCmd.Run()
 	if err != nil {
 		if exiterr, ok := err.(*exec.ExitError); ok {
