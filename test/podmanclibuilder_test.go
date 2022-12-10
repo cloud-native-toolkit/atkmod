@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	atk "github.ibm.com/skol/atkmod"
+	atk "github.com/cloud-native-toolkit/atkmod"
 )
 
 func TestBuildRun(t *testing.T) {

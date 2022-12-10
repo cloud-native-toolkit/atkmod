@@ -3,7 +3,7 @@
 [![Build Status](https://travis.ibm.com/skol/atkmod.svg?token=wGYsX6PCXyDddvgpBC56&branch=main)](https://travis.ibm.com/skol/atkmod)
 
 > Note: this proof of concept is not dead, but as of Sept 21, 2022 is shelved while some other work.
-> That being said, the module is in use by the `atk` [CLI](https://github.ibm.com/skol/atkcli), which
+> That being said, the module is in use by the `atk` [CLI](https://github.com/cloud-native-toolkit/atkcli), which
 > is also a proof of concept. This module includes some code for dealing with the Podman/Docker
 > command line and output that is unit tested, and it was better to re-use this than copy and paste it
 > or include it in the CLI outside this module.
