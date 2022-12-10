@@ -10,7 +10,7 @@ import (
 	logger "github.com/sirupsen/logrus"
 	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
-	atk "github.ibm.com/skol/atkmod"
+	atk "github.com/cloud-native-toolkit/atkmod"
 )
 
 func TestRunDeployment(t *testing.T) {

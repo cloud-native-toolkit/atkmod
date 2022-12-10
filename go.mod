@@ -1,4 +1,4 @@
-module github.ibm.com/skol/atkmod
+module github.com/cloud-native-toolkit/atkmod
 
 go 1.18
 
