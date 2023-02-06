@@ -16,3 +16,6 @@ test-all: build-test-images
 
 build-all:
 	go build
+
+# To use the same target as other projects.
+ci: test-all
