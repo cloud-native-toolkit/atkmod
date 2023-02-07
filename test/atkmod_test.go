@@ -9,10 +9,21 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestUnsupportedApiVersion(t *testing.T) {
+func TestSupportedApiVersion(t *testing.T) {
 	moduleLoader := atk.NewAtkManifestFileLoader()
 	module, err := moduleLoader.Load("examples/module3.yml")
 	assert.Nil(t, err)
+	assert.Equal(t, "itzcli/v1alpha1", module.ApiVersion)
+	assert.Equal(t, "InstallManifest", module.Kind)
+	assert.True(t, module.IsSupportedKind())
+	assert.True(t, module.IsSupportedVersion())
+	assert.True(t, module.IsSupported())
+}
+
+func TestUnsupportedApiVersion(t *testing.T) {
+	moduleLoader := atk.NewAtkManifestFileLoader()
+	module, err := moduleLoader.Load("examples/module5.yml")
+	assert.Error(t, err)
 	assert.Equal(t, "itzcli/v1beta1", module.ApiVersion)
 	assert.Equal(t, "InstallManifest", module.Kind)
 	assert.True(t, module.IsSupportedKind())
@@ -20,6 +31,27 @@ func TestUnsupportedApiVersion(t *testing.T) {
 	assert.False(t, module.IsSupported())
 }
 
+func TestUnsupportedApiVersionNamespace(t *testing.T) {
+	moduleLoader := atk.NewAtkManifestFileLoader()
+	module, err := moduleLoader.Load("examples/module6.yml")
+	assert.Error(t, err)
+	assert.Equal(t, "itzinator/v1alpha1", module.ApiVersion)
+	assert.Equal(t, "InstallManifest", module.Kind)
+	assert.True(t, module.IsSupportedKind())
+	assert.False(t, module.IsSupportedVersion())
+	assert.False(t, module.IsSupported())
+}
+
+func TestUnsupportedKind(t *testing.T) {
+	moduleLoader := atk.NewAtkManifestFileLoader()
+	module, err := moduleLoader.Load("examples/module7.yml")
+	assert.Error(t, err)
+	assert.Equal(t, "itzcli/v1alpha1", module.ApiVersion)
+	assert.Equal(t, "NeatoFile", module.Kind)
+	assert.False(t, module.IsSupportedKind())
+	assert.True(t, module.IsSupportedVersion())
+	assert.False(t, module.IsSupported())
+}
 func TestCreateFromFile(t *testing.T) {
 	moduleLoader := atk.NewAtkManifestFileLoader()
 	module, err := moduleLoader.Load("examples/module1.yml")

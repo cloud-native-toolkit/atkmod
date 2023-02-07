@@ -1,5 +1,5 @@
 apiVersion: itzcli/v1alpha1
-kind: InstallManifest
+kind: NeatoFile
 
 metadata:
   namespace: IBMTechnologyZone
@@ -16,10 +16,8 @@ spec:
     # based on metadata before actually starting the deployment step.
     pre_deploy:
       image: docker.io/library/alpine:3.16
-      # TODO: As of v1.0, this is not supported yet and will throw an error if
-      # used.
-#      command:
-#        - echo "Running pre-deploy"
+      command:
+        - echo "Running pre-deploy"
       volumeMounts:
         - name: /tmp
           mountPath: /workspace
@@ -27,16 +25,12 @@ spec:
     # Uses the container specified by image to run the deployment
     deploy:
       image: docker.io/library/alpine:3.16
-      # TODO: As of v1.0, this is not supported yet and will throw an error if
-      # used.
-#      command:
-#        - echo "Running deploy"
+      command:
+        - echo "Running deploy"
 
     # Uses the container specified by image to run post-deployment steps, such
     # as clean-ups, notifications, etc.
     post_deploy:
       image: docker.io/library/alpine:3.16
-      # TODO: As of v1.0, this is not supported yet and will throw an error if
-      # used.
-#      command:
-#        - echo "Running post-deploy"
+      command:
+        - echo "Running post-deploy"

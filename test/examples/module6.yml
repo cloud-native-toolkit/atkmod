@@ -1,4 +1,5 @@
-apiVersion: itzcli/v1alpha1
+# The one has an unsupported version of the file.
+apiVersion: itzinator/v1alpha1
 kind: InstallManifest
 
 metadata:

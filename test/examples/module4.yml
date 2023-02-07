@@ -1,4 +1,4 @@
-apiVersion: itzcli/v1beta1
+apiVersion: itzcli/v1alpha1
 kind: InstallManifest
 
 metadata:

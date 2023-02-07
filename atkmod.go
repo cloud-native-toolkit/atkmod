@@ -570,8 +570,15 @@ func (l *ManifestFileLoader) Load(uri string) (*ModuleInfo, error) {
 		return nil, err
 	}
 	err = yaml.Unmarshal(yamlFile, &module)
+	if err != nil {
+		return nil, err
+	}
+	// Now check to make sure the module is a supported version
+	supported := module.IsSupported()
+	if !supported {
+		err = fmt.Errorf("module version %s is not supported", module.ApiVersion)
+	}
 	return module, err
-
 }
 
 func NewAtkManifestFileLoader() *ManifestFileLoader {
