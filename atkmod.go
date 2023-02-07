@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"strings"
 	"text/template"
@@ -251,6 +252,7 @@ func NewPodmanCliCommandBuilder(cli *CliParts) *PodmanCliCommandBuilder {
 	defaults := cli
 	if defaults == nil {
 		defaults = &CliParts{}
+		defaults.Path = os.Getenv("ITZ_PODMAN_PATH")
 	}
 	defaultFlags := make([]string, 0)
 	parts := &CliParts{

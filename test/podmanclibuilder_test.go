@@ -1,11 +1,15 @@
 package test
 
 import (
+	"fmt"
+	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	atk "github.com/cloud-native-toolkit/atkmod"
+	"github.com/stretchr/testify/assert"
 )
+
+var testPodmanPath = os.Getenv("ITZ_PODMAN_PATH")
 
 func TestBuildRun(t *testing.T) {
 
@@ -17,7 +21,7 @@ func TestBuildRun(t *testing.T) {
 		Build()
 
 	assert.Nil(t, err)
-	assert.Equal(t, "/usr/local/bin/podman run -v /home/myuser/workdir:/workspace -e MYVAR=thisismyvalue localhost/myimage", actual)
+	assert.Equal(t, fmt.Sprintf("%s run -v /home/myuser/workdir:/workspace -e MYVAR=thisismyvalue localhost/myimage", testPodmanPath), actual)
 
 }
 
@@ -30,7 +34,7 @@ func TestBuildRunWithVolumes(t *testing.T) {
 		Build()
 
 	assert.Nil(t, err)
-	assert.Equal(t, "/usr/local/bin/podman run -v /tmp/data:/var/app/db -e MYVAR=thisismyvalue localhost/myimage", actual)
+	assert.Equal(t, fmt.Sprintf("%s run -v /tmp/data:/var/app/db -e MYVAR=thisismyvalue localhost/myimage", testPodmanPath), actual)
 
 }
 
@@ -43,7 +47,7 @@ func TestBuildRunWithVolumeOpts(t *testing.T) {
 		Build()
 
 	assert.Nil(t, err)
-	assert.Equal(t, "/usr/local/bin/podman run -v /tmp/data:/var/app/db:Z -e MYVAR=thisismyvalue localhost/myimage", actual)
+	assert.Equal(t, fmt.Sprintf("%s run -v /tmp/data:/var/app/db:Z -e MYVAR=thisismyvalue localhost/myimage", testPodmanPath), actual)
 }
 
 func TestBuildRunWithPorts(t *testing.T) {
@@ -54,7 +58,7 @@ func TestBuildRunWithPorts(t *testing.T) {
 		Build()
 
 	assert.Nil(t, err)
-	assert.Equal(t, "/usr/local/bin/podman run -p 80:8080 localhost/myimage", actual)
+	assert.Equal(t, fmt.Sprintf("%s run -p 80:8080 localhost/myimage", testPodmanPath), actual)
 
 }
 
@@ -67,8 +71,7 @@ func TestBuildRunWithUidMap(t *testing.T) {
 		Build()
 
 	assert.Nil(t, err)
-	assert.Equal(t, "/usr/local/bin/podman run --uidmap 1000:0:1 --uidmap 0:1:1000 localhost/myimage", actual)
-
+	assert.Equal(t, fmt.Sprintf("%s run --uidmap 1000:0:1 --uidmap 0:1:1000 localhost/myimage", testPodmanPath), actual)
 }
 
 func TestBuildFrom(t *testing.T) {
@@ -86,7 +89,7 @@ func TestBuildFrom(t *testing.T) {
 		BuildFrom(*imageInfo)
 
 	assert.Nil(t, err)
-	assert.Equal(t, "/usr/local/bin/podman run -v /home/myuser/workdir:/workspace -e MYVAR=thisismyvalue localhost/myimage", actual)
+	assert.Equal(t, fmt.Sprintf("%s run -v /home/myuser/workdir:/workspace -e MYVAR=thisismyvalue localhost/myimage", testPodmanPath), actual)
 
 }
 
@@ -123,5 +126,5 @@ func TestPsCommandOnly(t *testing.T) {
 	bldr := atk.NewPodmanCliCommandBuilder(cfg)
 	actual, err := bldr.Build()
 	assert.Nil(t, err)
-	assert.Equal(t, "/usr/local/bin/podman ps --format \"{{.Image}}\"", actual)
+	assert.Equal(t, fmt.Sprintf("%s ps --format \"{{.Image}}\"", "/usr/local/bin/podman"), actual)
 }

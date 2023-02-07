@@ -3,6 +3,7 @@ package test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -137,7 +138,7 @@ func TestRunDeployment(t *testing.T) {
 	assert.True(t, exists)
 	assert.Equal(t, 1, len(hook.Entries))
 	assert.Equal(t, logger.InfoLevel, hook.LastEntry().Level)
-	assert.Equal(t, "running command: /usr/local/bin/podman run -v /tmp:/workspace -e MYVAR=thisismyvalue localhost/atk-predeployer", hook.LastEntry().Message)
+	assert.Equal(t, fmt.Sprintf("running command: %s run -v /tmp:/workspace -e MYVAR=thisismyvalue localhost/atk-predeployer", testPodmanPath), hook.LastEntry().Message)
 	assert.False(t, runCtx.IsErrored())
 	assert.Equal(t, "pre deploying...\n", outbuff.String())
 
@@ -199,7 +200,7 @@ func TestContainerWithErr(t *testing.T) {
 	assert.True(t, exists)
 	assert.Equal(t, 1, len(hook.Entries))
 	assert.Equal(t, logger.InfoLevel, hook.LastEntry().Level)
-	assert.Equal(t, "running command: /usr/local/bin/podman run -v /tmp:/workspace -e MYVAR=thisismyvalue localhost/atk-errer", hook.LastEntry().Message)
+	assert.Equal(t, fmt.Sprintf("running command: %s run -v /tmp:/workspace -e MYVAR=thisismyvalue localhost/atk-errer", testPodmanPath), hook.LastEntry().Message)
 	assert.Equal(t, "", outbuff.String())
 	assert.Equal(t, "sh: nowhereisacommandthatdoesnotexist: not found\n", errbuff.String())
 	assert.True(t, runCtx.IsErrored())
@@ -254,7 +255,7 @@ func TestNonExistImage(t *testing.T) {
 	assert.True(t, exists)
 	assert.Equal(t, 1, len(hook.Entries))
 	assert.Equal(t, logger.InfoLevel, hook.LastEntry().Level)
-	assert.Equal(t, "running command: /usr/local/bin/podman run -v /tmp:/workspace localhost/nowhereisanimagethatdoesnotexist", hook.LastEntry().Message)
+	assert.Equal(t, fmt.Sprintf("running command: %s run -v /tmp:/workspace localhost/nowhereisanimagethatdoesnotexist", testPodmanPath), hook.LastEntry().Message)
 	assert.Equal(t, "", outbuff.String())
 	assert.True(t, strings.HasPrefix(errbuff.String(), "Trying to pull localhost/nowhereisanimagethatdoesnotexist:latest...\nError: initializing source docker://localhost/nowhereisanimagethatdoesnotexist:latest"))
 	assert.True(t, runCtx.IsErrored())
