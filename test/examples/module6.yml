@@ -1,0 +1,43 @@
+# The one has an unsupported version of the file.
+apiVersion: itzinator/v1alpha1
+kind: InstallManifest
+
+metadata:
+  namespace: IBMTechnologyZone
+  name: MyModule
+  labels:
+    "label1": value1
+
+spec:
+
+  lifecycle:
+
+    # Uses the container specified by image to run any pre-deployment tasks for
+    # the project. This could be, for example, generating files in the project
+    # based on metadata before actually starting the deployment step.
+    pre_deploy:
+      image: docker.io/library/alpine:3.16
+      # TODO: As of v1.0, this is not supported yet and will throw an error if
+      # used.
+#      command:
+#        - echo "Running pre-deploy"
+      volumeMounts:
+        - name: /tmp
+          mountPath: /workspace
+
+    # Uses the container specified by image to run the deployment
+    deploy:
+      image: docker.io/library/alpine:3.16
+      # TODO: As of v1.0, this is not supported yet and will throw an error if
+      # used.
+#      command:
+#        - echo "Running deploy"
+
+    # Uses the container specified by image to run post-deployment steps, such
+    # as clean-ups, notifications, etc.
+    post_deploy:
+      image: docker.io/library/alpine:3.16
+      # TODO: As of v1.0, this is not supported yet and will throw an error if
+      # used.
+#      command:
+#        - echo "Running post-deploy"

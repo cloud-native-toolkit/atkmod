@@ -3,6 +3,7 @@ package atkmod
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -18,10 +19,18 @@ import (
 type AtkContextKey string
 
 const (
-	LoggerContextKey AtkContextKey = "atk.logger"
-	StdOutContextKey AtkContextKey = "atk.stdout"
-	StdErrContextKey AtkContextKey = "atk.stderr"
-	BaseDirectory    AtkContextKey = "atk.basedir"
+	apiVersionSeparator               = "/"
+	apiName                           = "itzcli"
+	apiVersionv1Alpha1                = "v1alpha1"
+	installKind                       = "InstallManifest"
+	LoggerContextKey    AtkContextKey = "atk.logger"
+	StdOutContextKey    AtkContextKey = "atk.stdout"
+	StdErrContextKey    AtkContextKey = "atk.stderr"
+	BaseDirectory       AtkContextKey = "atk.basedir"
+)
+
+var (
+	supportedAPIVersions = []string{apiVersionv1Alpha1}
 )
 
 type EnvVarInfo struct {
@@ -29,40 +38,97 @@ type EnvVarInfo struct {
 	Value string `json:"value" yaml:"value"`
 }
 
-func (e EnvVarInfo) String() string {
+func (e *EnvVarInfo) String() string {
 	return fmt.Sprintf("%s=%s", e.Name, e.Value)
 }
 
-type ImageInfo struct {
-	Image    string       `json:"img" yaml:"img"`
-	Commands []string     `json:"cmd" yaml:"cmd"`
-	EnvVars  []EnvVarInfo `json:"env" yaml:"env"`
+type VolumeInfo struct {
+	MountPath string `json:"mountPath" yaml:"mountPath"`
+	Name      string `json:"name" yaml:"name"`
 }
 
-type ParamInfo struct {
+type ImageInfo struct {
+	Image   string       `json:"image" yaml:"image"`
+	Script  string       `json:"script" yaml:"script"`
+	Command []string     `json:"command" yaml:"command"`
+	Args    []string     `json:"args" yaml:"args"`
+	EnvVars []EnvVarInfo `json:"env" yaml:"env"`
+	Volumes []VolumeInfo `json:"volumeMounts" yaml:"volumeMounts"`
+}
+
+type HookInfo struct {
+	GetState ImageInfo `json:"get_state" yaml:"get_state"`
 	List     ImageInfo `json:"list" yaml:"list"`
 	Validate ImageInfo `json:"validate" yaml:"validate"`
 }
 
-type MetaInfo struct {
-	Params ParamInfo `json:"params" yaml:"params"`
+type MetadataInfo struct {
+	Name      string            `json:"name" yaml:"name"`
+	Namespace string            `json:"namespace" yaml:"namespace"`
+	Labels    map[string]string `json:"labels" yaml:"labels"`
 }
-
-type SpecInfo struct {
-	GetState   ImageInfo `json:"get_state" yaml:"get_state"`
+type LifecycleInfo struct {
 	PreDeploy  ImageInfo `json:"pre_deploy" yaml:"pre_deploy"`
 	Deploy     ImageInfo `json:"deploy" yaml:"deploy"`
 	PostDeploy ImageInfo `json:"post_deploy" yaml:"post_deploy"`
 }
 
+type SpecInfo struct {
+	Hooks     HookInfo      `json:"hooks" yaml:"hooks"`
+	Lifecycle LifecycleInfo `json:"lifecycle" yaml:"lifecycle"`
+}
+
+type ApiVersion struct {
+	Namespace string
+	Version   string
+}
+
+func (a ApiVersion) String() string {
+	return fmt.Sprintf("%s%s%s", a.Namespace, apiVersionSeparator, a.Version)
+}
+
+// ParseApiVersion parses the version of the apiVersion
+func ParseApiVersion(val string) (*ApiVersion, error) {
+	parts := strings.Split(val, apiVersionSeparator)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid apiVersion format: %s", val)
+	}
+
+	return &ApiVersion{Namespace: parts[0], Version: parts[1]}, nil
+}
+
 type ModuleInfo struct {
-	Id             string   `json:"id" yaml:"id"`
-	Name           string   `json:"name" yaml:"name"`
-	Version        string   `json:"version" yaml:"version"`
-	TemplateUrl    string   `json:"template_url" yaml:"template_url"`
-	Dependencies   []string `json:"dependencies" yaml:"dependencies"`
-	Meta           MetaInfo `json:"meta" yaml:"meta"`
-	Specifications SpecInfo `json:"spec" yaml:"spec"`
+	ApiVersion     string       `json:"apiVersion" yaml:"apiVersion"`
+	Kind           string       `json:"kind" yaml:"kind"`
+	Metadata       MetadataInfo `json:"metadata" yaml:"metadata"`
+	Specifications SpecInfo     `json:"spec" yaml:"spec"`
+}
+
+// IsSupportedKind returns true if the kind is supported.
+func (m *ModuleInfo) IsSupportedKind() bool {
+	return m.Kind == installKind
+}
+
+// IsSupportedVersion returns true if apiVersion is supported.
+func (m *ModuleInfo) IsSupportedVersion() bool {
+	ver, err := ParseApiVersion(m.ApiVersion)
+	if err != nil {
+		return false
+	}
+	if ver.Namespace != apiName {
+		return false
+	}
+	for _, version := range supportedAPIVersions {
+		if ver.Version == version {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSupported returns true if the manifest file is supported.
+func (m *ModuleInfo) IsSupported() bool {
+	return m.IsSupportedKind() && m.IsSupportedVersion()
 }
 
 // CliParts represents the parts of the entire podman command line.
@@ -159,13 +225,21 @@ func (b *PodmanCliCommandBuilder) Build() (string, error) {
 	}
 	tmpl.Execute(buf, b.parts)
 	return strings.TrimSpace(buf.String()), nil
-
 }
 
 func (b *PodmanCliCommandBuilder) BuildFrom(info ImageInfo) (string, error) {
+	// TODO: this should go away once this is supported, but for now we want
+	// to make sure we tell the user.
+	if len(info.Command) > 0 {
+		return "", errors.New("command is not yet supported")
+	}
+
 	b.WithImage(info.Image)
 	for _, envvar := range info.EnvVars {
 		b.WithEnvvar(envvar.Name, envvar.Value)
+	}
+	for _, v := range info.Volumes {
+		b.WithVolume(v.Name, v.MountPath)
 	}
 	return b.Build()
 }
@@ -178,6 +252,7 @@ func NewPodmanCliCommandBuilder(cli *CliParts) *PodmanCliCommandBuilder {
 	defaults := cli
 	if defaults == nil {
 		defaults = &CliParts{}
+		defaults.Path = os.Getenv("ITZ_PODMAN_PATH")
 	}
 	defaultFlags := make([]string, 0)
 	parts := &CliParts{
@@ -204,6 +279,7 @@ func Iif(value string, orValue string) string {
 }
 
 type RunContext struct {
+	Context     context.Context
 	In          io.Reader
 	Out         io.Writer
 	Log         logger.Logger
@@ -291,11 +367,11 @@ const (
 	Deployed      State = "deployed"
 	PostDeploying State = "postdeploying"
 	PostDeployed  State = "postdeployed"
-	Done          State = PostDeployed
+	Done                = PostDeployed
 	Errored       State = "errored"
 )
 
-var DefaultOrder []State = []State{
+var DefaultOrder = []State{
 	Invalid,
 	Initializing,
 	Configured,
@@ -316,6 +392,10 @@ type StateCmd func(ctx *RunContext, notifier Notifier) error
 // It does nothing except to insure we don't return a nil.
 func NoopHandler(ctx *RunContext, notifier Notifier) error {
 	notifier.Notify(Invalid)
+	return nil
+}
+
+func DoneHandler(ctx *RunContext, notifier Notifier) error {
 	return nil
 }
 
@@ -361,6 +441,7 @@ func (m *DeployableModule) NotifyErr(state State, err error) {
 }
 
 func (m *DeployableModule) AddCmd(status State, handler StateCmd) error {
+	m.runCtx.Log.Tracef("Adding command for: %s", status)
 	if m.cmds[status] == nil {
 		m.cmds[status] = handler
 		return nil
@@ -370,21 +451,34 @@ func (m *DeployableModule) AddCmd(status State, handler StateCmd) error {
 }
 
 func (m *DeployableModule) GetCmdFor(status State) StateCmd {
+	m.runCtx.Log.Tracef("Getting command for: %s", status)
 	return m.cmds[status]
 }
 
-func (m *DeployableModule) Next() (StateCmd, bool) {
-	for idx, state := range m.execOrder {
-		if m.current == state {
-			return m.GetCmdFor(m.execOrder[idx+1]), true
+type NextFunc func() (StateCmd, bool)
+
+func (m *DeployableModule) Itr() (NextFunc, bool) {
+	return func() (StateCmd, bool) {
+		if m.current == Done {
+			return DoneHandler, false
 		}
-	}
-	return NoopHandler, false
+		if m.current == Errored {
+			return DoneHandler, false
+		}
+
+		for idx, state := range m.execOrder {
+			if m.current == state {
+				m.runCtx.Log.Tracef("Found state: %s; next state is: %s", m.current, m.execOrder[idx+1])
+				return m.GetCmdFor(m.execOrder[idx]), true
+			}
+		}
+		return NoopHandler, false
+	}, true
 }
 
 func (m *DeployableModule) preDeploy(ctx *RunContext, notifier Notifier) error {
 	notifier.Notify(PreDeploying)
-	err := m.cli.RunImage(ctx, m.module.Specifications.PreDeploy)
+	err := m.cli.RunImage(ctx, m.module.Specifications.Lifecycle.PreDeploy)
 	if err != nil {
 		notifier.Notify(Errored)
 	} else {
@@ -395,7 +489,7 @@ func (m *DeployableModule) preDeploy(ctx *RunContext, notifier Notifier) error {
 
 func (m *DeployableModule) deploy(ctx *RunContext, notifier Notifier) error {
 	notifier.Notify(Deploying)
-	err := m.cli.RunImage(ctx, m.module.Specifications.Deploy)
+	err := m.cli.RunImage(ctx, m.module.Specifications.Lifecycle.Deploy)
 	if err != nil {
 		notifier.Notify(Errored)
 	} else {
@@ -406,7 +500,7 @@ func (m *DeployableModule) deploy(ctx *RunContext, notifier Notifier) error {
 
 func (m *DeployableModule) postDeploy(ctx *RunContext, notifier Notifier) error {
 	notifier.Notify(PostDeploying)
-	err := m.cli.RunImage(ctx, m.module.Specifications.PostDeploy)
+	err := m.cli.RunImage(ctx, m.module.Specifications.Lifecycle.PostDeploy)
 	if err != nil {
 		notifier.Notify(Errored)
 	} else {
@@ -427,13 +521,8 @@ func (m *DeployableModule) IsErrored() bool {
 	return m.current == Errored
 }
 
-func NewDeployableModule(ctx context.Context, runCtx *RunContext, module *ModuleInfo) *DeployableModule {
+func NewDeployableModule(runCtx *RunContext, module *ModuleInfo) *DeployableModule {
 	builder := NewPodmanCliCommandBuilder(nil)
-	cwd := fmt.Sprintf("%s", ctx.Value(BaseDirectory))
-	if len(cwd) == 0 {
-		cwd, _ = os.Getwd()
-	}
-	builder = builder.WithWorkspace(cwd)
 
 	deployment := &DeployableModule{
 		module:    module,
@@ -445,12 +534,25 @@ func NewDeployableModule(ctx context.Context, runCtx *RunContext, module *Module
 	}
 
 	// Now configure the cmds for the module deployment
-	deployment.AddCmd(PreDeploying, deployment.preDeploy)
-	deployment.AddCmd(Deploying, deployment.deploy)
-	deployment.AddCmd(PostDeploying, deployment.postDeploy)
+	deployment.AddCmd(Invalid, advanceTo(Initializing))
 	deployment.AddCmd(Initializing, deployment.resolveState)
+	deployment.AddCmd(Configured, advanceTo(Validated))
+	deployment.AddCmd(Validated, advanceTo(PreDeploying))
+	deployment.AddCmd(PreDeploying, deployment.preDeploy)
+	deployment.AddCmd(PreDeployed, advanceTo(Deploying))
+	deployment.AddCmd(Deploying, deployment.deploy)
+	deployment.AddCmd(Deployed, advanceTo(PostDeploying))
+	deployment.AddCmd(PostDeploying, deployment.postDeploy)
+	deployment.AddCmd(PostDeployed, advanceTo(Done))
 
 	return deployment
+}
+
+func advanceTo(s State) StateCmd {
+	return func(ctx *RunContext, notifier Notifier) error {
+		notifier.Notify(s)
+		return nil
+	}
 }
 
 type ModuleLoader interface {
@@ -464,14 +566,21 @@ type ManifestFileLoader struct {
 func (l *ManifestFileLoader) Load(uri string) (*ModuleInfo, error) {
 	l.path = uri
 	logger.Debug("Loading module from manifest file")
-	var module *ModuleInfo = &ModuleInfo{}
+	var module = &ModuleInfo{}
 	yamlFile, err := ioutil.ReadFile(uri)
 	if err != nil {
 		return nil, err
 	}
 	err = yaml.Unmarshal(yamlFile, &module)
+	if err != nil {
+		return nil, err
+	}
+	// Now check to make sure the module is a supported version
+	supported := module.IsSupported()
+	if !supported {
+		err = fmt.Errorf("module version %s is not supported", module.ApiVersion)
+	}
 	return module, err
-
 }
 
 func NewAtkManifestFileLoader() *ManifestFileLoader {

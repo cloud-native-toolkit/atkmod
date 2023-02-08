@@ -202,66 +202,68 @@ therefore verified against actual code. But, for convenience, an example is
 shown here:
 
 ```yaml
-id: my-base-project
-# This is the name of the project
-name: My Base Project
-# The version of this file spec
-version: 0.1
-# The URL to the .git repo that is the template for this project.
-template_url: https://github.com/someorg/someproject
+# The apiVersion of the file. Supported values for the apiVersion are currently
+# only v1alpha1. Any other value will cause an error when the file is being 
+# loaded. itzcli is the namespace.
+apiVersion: itzcli/v1alpha1
+# "InstallManifest" is used for the type of file that is included in modules to 
+# tell ITZ CLI how to install the module.
+kind: InstallManifest
 
 # Meta information about this project.
-meta:
-  params:
-    # Uses the container specified by "img" to get a list of the parameters
+metadata:
+  # The namespace for the module. This can be any value right now.
+  namespace: IBMTechnologyZone
+  # The name of the module. This really should match the name that is displayed
+  # to users in software catalogs, etc.
+  name: MyModule
+  # Any arbitrary labels for the module. Reserved for future use.
+  labels:
+    "label1": value1
+
+spec:
+
+  # Hooks are not part of the lifecycle of the module but are called at various
+  # points during the lifecycle to validate state and lifecycle completeness.
+  hooks:
+    # Uses the container specified by "image" to get a list of the parameters
     # for the project. This is either a custom container or command specified
     # by the maintainer, or could be a "plugin" that is supported by the
-    # ATK team.
-    #
-    # See https://TODO for documentation on the expected output
+    # ITZ CLI.
     list:
-      img: something/parameter-lister:latest
-      cmd:
-        - echo "Running list"
+      image: something/parameter-lister:latest
       env:
         - name: MY_PROJECT_NAME
           value: my-base-project
+      volumeMounts:
+        - mountPath: /workspace
+          name: ${HOME}/.itz/cache
 
     # Similar to list (above), but uses the container to validate the values
     # for the parameters.
-    # See https://TODO for documentation on the input
     validate:
-      img: something/parameter-validator:latest
-      cmd:
-        - echo "Running validate"
+      image: something/parameter-validator:latest
 
-spec:
-  # Gets the current state of the project and returns a structure documented at
-  # https://TODO
-  get_state:
-    img: something/get-stater:latest
+    # Gets the current state of the project and returns a structure documented at
+    get_state:
+      image: something/get-stater:latest
 
-  # Uses the container specified by img to run any pre-deployment tasks for
-  # the project. This could be, for example, generating files in the project
-  # based on metadata before actually starting the deployment stage.
-  pre_deploy:
-    img: something/pre-deployer:latest
-    cmd:
-      - echo "Running pre-deploy"
+  lifecycle:
 
-  # Uses the container specified by img to run the deployment
-  deploy:
-    img: something/deployer:latest
-    cmd:
-      - echo "Running deploy"
+    # Uses the container specified by image to run any pre-deployment tasks for
+    # the project. This could be, for example, generating files in the project
+    # based on metadata before actually starting the deployment step.
+    pre_deploy:
+      image: something/pre-deployer:latest
 
-  # Uses the container specified by img to run post-deployment stages, such
-  # as clean-ups, notifications, etc.
-  post_deploy:
-    img: something/post-deployer:latest
-    cmd:
-      - echo "Running post-deploy"
+    # Uses the container specified by image to run the deployment
+    deploy:
+      image: something/deployer:latest
 
+    # Uses the container specified by image to run post-deployment steps, such
+    # as clean-ups, notifications, etc.
+    post_deploy:
+      image: something/post-deployer:latest
 ```
 
 ## The included Podman/Docker API

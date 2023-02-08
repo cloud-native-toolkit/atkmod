@@ -1,34 +1,33 @@
-id: my-base-project
-name: My Base Project
-version: 0.1
-template_url: https://github.com/someorg/someproject
-dependencies:
-  - None
+apiVersion: itzcli/v1alpha1
+kind: InstallManifest
 
-meta:
-  params:
+metadata:
+  namespace: IBMTechnologyZone
+  name: MyOtherModule
+  labels:
+    "label2": value2
+
+spec:
+  hooks:
     list:
-      img: localhost/atk-lister:latest
+      image: atk-lister:latest
       env:
         - name: MY_PROJECT_NAME
           value: my-base-project
 
     validate:
-      img: localhost/atk-validator
+      image: atk-validator
 
-spec:
-  get_state:
-    img: localhost/atk-deployer
+    get_state:
+      image: atk-deployer
 
-  pre_deploy:
-    img: docker.io/library/alpine:3.16
-    cmd:
-      - echo "Running pre-deploy"
+  lifecycle:
 
-  deploy:
-    img: localhost/atk-deployer
+    pre_deploy:
+      image: docker.io/library/alpine:3.16
 
-  post_deploy:
-    img: docker.io/library/alpine:3.16
-    cmd:
-      - echo "Running post-deploy"
+    deploy:
+      image: atk-deployer
+
+    post_deploy:
+      image: docker.io/library/alpine:3.16

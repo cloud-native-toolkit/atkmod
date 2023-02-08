@@ -12,7 +12,10 @@ build-test-images:
 	cd $(TEST_C_DIR)/postdeploy && $(IMG_BUILDER) build -t atk-postdeployer .
 
 test-all: build-test-images
-	@go test github.com/cloud-native-toolkit/atkmod/test
+	@ITZ_PODMAN_PATH=$(IMG_BUILDER) go test github.com/cloud-native-toolkit/atkmod/test
 
 build-all:
 	go build
+
+# To use the same target as other projects.
+ci: test-all
