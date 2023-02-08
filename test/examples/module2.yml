@@ -10,16 +10,16 @@ metadata:
 spec:
   hooks:
     list:
-      image: localhost/atk-lister:latest
+      image: atk-lister:latest
       env:
         - name: MY_PROJECT_NAME
           value: my-base-project
 
     validate:
-      image: localhost/atk-validator
+      image: atk-validator
 
     get_state:
-      image: localhost/atk-deployer
+      image: atk-deployer
 
   lifecycle:
 
@@ -27,7 +27,7 @@ spec:
       image: docker.io/library/alpine:3.16
 
     deploy:
-      image: localhost/atk-deployer
+      image: atk-deployer
 
     post_deploy:
       image: docker.io/library/alpine:3.16
