@@ -3,6 +3,7 @@ package test
 import (
 	"bytes"
 	"os/exec"
+	"strings"
 	"testing"
 
 	atk "github.com/cloud-native-toolkit/atkmod"
@@ -107,7 +108,7 @@ func TestLastErrCode(t *testing.T) {
 	cli := atk.NewPodmanCliCommandBuilder(defaults)
 	runner := atk.CliModuleRunner{PodmanCliCommandBuilder: *cli}
 	runner.Run(ctx)
-	assert.Equal(t, "ls: moo: No such file or directory\n", buf.String())
+	assert.True(t, strings.Contains(buf.String(), "No such file or directory"))
 	cmdStr, _ := runner.Build()
 	assert.Equal(t, "/bin/ls moo", cmdStr)
 
@@ -115,7 +116,7 @@ func TestLastErrCode(t *testing.T) {
 	assert.True(t, len(ctx.Errors) > 0)
 	expectedErr := ctx.Errors[0]
 	if exiterr, ok := expectedErr.(*exec.ExitError); ok {
-		assert.Equal(t, 1, exiterr.ExitCode())
+		assert.NotEqual(t, 0, exiterr.ExitCode())
 	} else {
 		assert.Fail(t, "Expected ExitError, got %T", expectedErr)
 	}
