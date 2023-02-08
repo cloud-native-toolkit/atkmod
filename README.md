@@ -1,6 +1,6 @@
 # atkmod: A go library API for module manifests
 
-[![Build Status](https://travis.ibm.com/skol/atkmod.svg?token=wGYsX6PCXyDddvgpBC56&branch=main)](https://travis.ibm.com/skol/atkmod)
+![Go build](https://github.com/cloud-native-toolkit/atkmod/actions/workflows/go.yml/badge.svg)
 
 > Note: this proof of concept is not dead, but as of Sept 21, 2022 is shelved 
 > while some other work. That being said, the module is in use by the `itz` 
