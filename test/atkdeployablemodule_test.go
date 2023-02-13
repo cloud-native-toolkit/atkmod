@@ -13,6 +13,66 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestRunListHook(t *testing.T) {
+	listerOutput := `{
+  "specversion": "1.0",
+  "type": "com.ibm.techzone.itz.tf_hook_list.response",
+  "source": "https://github.ibm.com/skol/itz-deployer-plugins/tf-hook-list",
+  "subject": "fyre-vm",
+  "id": "7208f364-86af-4d18-8fcd-c1f5cd06cdb4",
+  "time": "2023-02-13T17:17:48.570677",
+  "datacontenttype": "application/json",
+  "data": {
+    "variables": [
+      {
+        "name": "TF_VAR_cloud_provider",
+        "default": "fyre"
+      },
+      {
+        "name": "TF_VAR_cloud_type",
+        "default": "private"
+      },
+      {
+        "name": "TF_VAR_fyre_api_key",
+        "default": ""
+      },
+      {
+        "name": "TF_VAR_fyre_root_password",
+        "default": ""
+      },
+      {
+        "name": "TF_VAR_fyre_username",
+        "default": ""
+      }
+    ]
+  }
+}`
+	loader := atk.NewAtkManifestFileLoader()
+	manifest, err := loader.Load("examples/module2.yml")
+	assert.NoError(t, err)
+	outbuff := new(bytes.Buffer)
+	errbuff := new(bytes.Buffer)
+
+	log, _ := logtest.NewNullLogger()
+	log.SetFormatter(&logger.TextFormatter{})
+	log.SetOutput(os.Stdout)
+	log.SetLevel(logger.DebugLevel)
+
+	runCtx := &atk.RunContext{
+		Context: context.Background(),
+		Out:     outbuff,
+		Err:     errbuff,
+		Log:     *log,
+	}
+	module := atk.NewDeployableModule(runCtx, manifest)
+
+	hook := module.GetHook("list")
+	err = hook(runCtx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, outbuff.String(), listerOutput)
+}
+
 func TestRunHappyPathFullDeployment(t *testing.T) {
 	loader := atk.NewAtkManifestFileLoader()
 	manifest, err := loader.Load("examples/module3.yml")

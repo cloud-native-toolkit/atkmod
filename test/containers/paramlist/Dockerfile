@@ -1,3 +1,5 @@
 FROM alpine:3.16
 
-ENTRYPOINT [ "echo", "deploying..." ]
+COPY example.json /var/example.json
+
+ENTRYPOINT [ "cat", "/var/example.json"]
