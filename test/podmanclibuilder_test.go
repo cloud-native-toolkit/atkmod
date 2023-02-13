@@ -22,7 +22,6 @@ func TestBuildRun(t *testing.T) {
 
 	assert.Nil(t, err)
 	assert.Equal(t, fmt.Sprintf("%s run -v /home/myuser/workdir:/workspace -e MYVAR=thisismyvalue myimage", testPodmanPath), actual)
-
 }
 
 func TestBuildRunWithVolumes(t *testing.T) {

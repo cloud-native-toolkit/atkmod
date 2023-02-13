@@ -66,7 +66,7 @@ func TestRunListHook(t *testing.T) {
 	}
 	module := atk.NewDeployableModule(runCtx, manifest)
 
-	hook := module.GetHook("list")
+	hook := module.GetHook(atk.ListHook)
 	err = hook(runCtx)
 
 	assert.NoError(t, err)

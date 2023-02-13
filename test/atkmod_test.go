@@ -2,7 +2,9 @@ package test
 
 import (
 	"bytes"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -121,4 +123,94 @@ func TestLastErrCode(t *testing.T) {
 		assert.Fail(t, "Expected ExitError, got %T", expectedErr)
 	}
 
+}
+
+func TestLoadEventData(t *testing.T) {
+	type args struct {
+		eventS string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *atk.EventData
+		wantErr bool
+	}{
+		{
+			name: "valid event data",
+			args: args{
+				eventS: `{
+  "specversion": "1.0",
+  "type": "com.ibm.techzone.itz.hook.list.response",
+  "source": "https://github.ibm.com/skol/itz-deployer-plugins/tf-hook-list",
+  "subject": "fyre-vm",
+  "id": "7208f364-86af-4d18-8fcd-c1f5cd06cdb4",
+  "time": "2023-02-13T17:17:48.57Z",
+  "datacontenttype": "application/json",
+  "data": {
+    "variables": [
+      {
+        "name": "TF_VAR_cloud_provider",
+        "default": "fyre"
+      },
+      {
+        "name": "TF_VAR_cloud_type",
+        "default": "private"
+      },
+      {
+        "name": "TF_VAR_fyre_api_key",
+        "default": ""
+      },
+      {
+        "name": "TF_VAR_fyre_username",
+        "default": ""
+      }
+    ]
+  }
+}`,
+			},
+			want: &atk.EventData{
+				Variables: []atk.EventDataVarInfo{
+					{
+						Name:    "TF_VAR_cloud_provider",
+						Default: "fyre",
+					},
+					{
+						Name:    "TF_VAR_cloud_type",
+						Default: "private",
+					},
+					{
+						Name: "TF_VAR_fyre_api_key",
+					},
+					{
+						Name: "TF_VAR_fyre_username",
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event, err := atk.LoadEvent(tt.args.eventS)
+			got, err := atk.LoadEventData(event)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("LoadEventData() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("LoadEventData() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWriteEvent(t *testing.T) {
+	event := cloudevents.NewEvent()
+	vars := &atk.EventData{}
+	event.SetType(string(atk.ListHookResponseEvent))
+	event.SetData(cloudevents.ApplicationJSON, vars)
+	outbuff := new(bytes.Buffer)
+	err := atk.WriteEvent(&event, outbuff)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, outbuff.String())
 }
