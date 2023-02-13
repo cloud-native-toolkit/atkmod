@@ -3,6 +3,7 @@ package atkmod
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,26 +13,53 @@ import (
 	"strings"
 	"text/template"
 
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	logger "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
 type AtkContextKey string
 
+type ModuleEventType string
+type Hook string
+
 const (
-	apiVersionSeparator               = "/"
-	apiName                           = "itzcli"
-	apiVersionv1Alpha1                = "v1alpha1"
-	installKind                       = "InstallManifest"
-	LoggerContextKey    AtkContextKey = "atk.logger"
-	StdOutContextKey    AtkContextKey = "atk.stdout"
-	StdErrContextKey    AtkContextKey = "atk.stderr"
-	BaseDirectory       AtkContextKey = "atk.basedir"
+	apiVersionSeparator = "/"
+	apiName             = "itzcli"
+	apiVersionv1Alpha1  = "v1alpha1"
+	installKind         = "InstallManifest"
+
+	ListHookResponseEvent           ModuleEventType = "com.ibm.techzone.cli.hook.list.response"
+	ValidateHookResponseEvent       ModuleEventType = "com.ibm.techzone.cli.hook.validate.response"
+	ValidateHookRequestEvent        ModuleEventType = "com.ibm.techzone.cli.hook.validate.request"
+	GetStateHookResponseEvent       ModuleEventType = "com.ibm.techzone.cli.hook.get_state.response"
+	GetStateHookRequestEvent        ModuleEventType = "com.ibm.techzone.cli.hook.get_state.request"
+	PreDeployLifecycleRequestEvent  ModuleEventType = "com.ibm.techzone.cli.lifecycle.pre_deploy.request"
+	DeployLifecycleRequestEvent     ModuleEventType = "com.ibm.techzone.cli.lifecycle.deploy.request"
+	PostDeployLifecycleRequestEvent ModuleEventType = "com.ibm.techzone.cli.lifecycle.post_deploy.request"
+	LoggerContextKey                AtkContextKey   = "atk.logger"
+	StdOutContextKey                AtkContextKey   = "atk.stdout"
+	StdErrContextKey                AtkContextKey   = "atk.stderr"
+	BaseDirectory                   AtkContextKey   = "atk.basedir"
+	ListHook                        Hook            = "list"
+	ValidateHook                    Hook            = "validate"
+	GetStateHook                    Hook            = "get_state"
 )
 
 var (
 	supportedAPIVersions = []string{apiVersionv1Alpha1}
 )
+
+type EventDataVarInfo struct {
+	Name        string `json:"name" yaml:"name"`
+	Value       string `json:"value,omitempty" yaml:"value,omitempty"`
+	Default     string `json:"default,omitempty" yaml:"default,omitempty"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+}
+
+type EventData struct {
+	Variables []EventDataVarInfo `json:"variables,omitempty" yaml:"variables,omitempty"`
+}
 
 type EnvVarInfo struct {
 	Name  string `json:"name" yaml:"name"`
@@ -425,7 +453,7 @@ type DeployableModule struct {
 	cli       *CliModuleRunner
 	runCtx    RunContext
 	cmds      map[State]StateCmd
-	hooks     map[string]HookCmd
+	hooks     map[Hook]HookCmd
 	previous  State
 	current   State
 	execOrder []State
@@ -437,7 +465,7 @@ func (m *DeployableModule) getHookCmd(img ImageInfo) HookCmd {
 	}
 }
 
-func (m *DeployableModule) addHook(name string, hook HookCmd) error {
+func (m *DeployableModule) addHook(name Hook, hook HookCmd) error {
 	m.hooks[name] = hook
 	return nil
 }
@@ -473,7 +501,7 @@ func (m *DeployableModule) GetCmdFor(status State) StateCmd {
 	return m.cmds[status]
 }
 
-func (m *DeployableModule) GetHook(name string) HookCmd {
+func (m *DeployableModule) GetHook(name Hook) HookCmd {
 	m.runCtx.Log.Tracef("Getting hook for: %s", name)
 	return m.hooks[name]
 }
@@ -554,12 +582,12 @@ func NewDeployableModule(runCtx *RunContext, module *ModuleInfo) *DeployableModu
 		execOrder: DefaultOrder,
 		current:   Invalid,
 		cmds:      make(map[State]StateCmd),
-		hooks:     make(map[string]HookCmd),
+		hooks:     make(map[Hook]HookCmd),
 	}
 
-	deployment.addHook("list", deployment.getHookCmd(module.Specifications.Hooks.List))
-	deployment.addHook("validate", deployment.getHookCmd(module.Specifications.Hooks.Validate))
-	deployment.addHook("get_state", deployment.getHookCmd(module.Specifications.Hooks.GetState))
+	deployment.addHook(ListHook, deployment.getHookCmd(module.Specifications.Hooks.List))
+	deployment.addHook(ValidateHook, deployment.getHookCmd(module.Specifications.Hooks.Validate))
+	deployment.addHook(GetStateHook, deployment.getHookCmd(module.Specifications.Hooks.GetState))
 
 	// Now configure the cmds for the module deployment
 	deployment.AddCmd(Invalid, advanceTo(Initializing))
@@ -613,4 +641,28 @@ func (l *ManifestFileLoader) Load(uri string) (*ModuleInfo, error) {
 
 func NewAtkManifestFileLoader() *ManifestFileLoader {
 	return &ManifestFileLoader{}
+}
+
+func LoadEventData(event *cloudevents.Event) (*EventData, error) {
+	var data EventData
+	err := yaml.Unmarshal(event.Data(), &data)
+	return &data, err
+}
+
+func LoadEvent(eventS string) (*cloudevents.Event, error) {
+	event := cloudevents.NewEvent()
+	err := json.Unmarshal([]byte(eventS), &event)
+	if err != nil {
+		return nil, err
+	}
+	return &event, nil
+}
+
+func WriteEvent(event *cloudevents.Event, out io.Writer) error {
+	bytes, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	_, err = out.Write(bytes)
+	return err
 }
