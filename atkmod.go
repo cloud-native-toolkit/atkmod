@@ -388,10 +388,16 @@ var DefaultOrder = []State{
 // StateCmd is an implementation of a Command pattern
 type StateCmd func(ctx *RunContext, notifier Notifier) error
 
+type HookCmd func(ctx *RunContext) error
+
 // NoopHandler is an implementation of the Null Object pattern.
 // It does nothing except to insure we don't return a nil.
 func NoopHandler(ctx *RunContext, notifier Notifier) error {
 	notifier.Notify(Invalid)
+	return nil
+}
+
+func NoopHookCmd(ctx *RunContext) error {
 	return nil
 }
 
@@ -419,9 +425,21 @@ type DeployableModule struct {
 	cli       *CliModuleRunner
 	runCtx    RunContext
 	cmds      map[State]StateCmd
+	hooks     map[string]HookCmd
 	previous  State
 	current   State
 	execOrder []State
+}
+
+func (m *DeployableModule) getHookCmd(img ImageInfo) HookCmd {
+	return func(ctx *RunContext) error {
+		return m.cli.RunImage(ctx, img)
+	}
+}
+
+func (m *DeployableModule) addHook(name string, hook HookCmd) error {
+	m.hooks[name] = hook
+	return nil
 }
 
 func (m *DeployableModule) State() State {
@@ -453,6 +471,11 @@ func (m *DeployableModule) AddCmd(status State, handler StateCmd) error {
 func (m *DeployableModule) GetCmdFor(status State) StateCmd {
 	m.runCtx.Log.Tracef("Getting command for: %s", status)
 	return m.cmds[status]
+}
+
+func (m *DeployableModule) GetHook(name string) HookCmd {
+	m.runCtx.Log.Tracef("Getting hook for: %s", name)
+	return m.hooks[name]
 }
 
 type NextFunc func() (StateCmd, bool)
@@ -531,7 +554,12 @@ func NewDeployableModule(runCtx *RunContext, module *ModuleInfo) *DeployableModu
 		execOrder: DefaultOrder,
 		current:   Invalid,
 		cmds:      make(map[State]StateCmd),
+		hooks:     make(map[string]HookCmd),
 	}
+
+	deployment.addHook("list", deployment.getHookCmd(module.Specifications.Hooks.List))
+	deployment.addHook("validate", deployment.getHookCmd(module.Specifications.Hooks.Validate))
+	deployment.addHook("get_state", deployment.getHookCmd(module.Specifications.Hooks.GetState))
 
 	// Now configure the cmds for the module deployment
 	deployment.AddCmd(Invalid, advanceTo(Initializing))

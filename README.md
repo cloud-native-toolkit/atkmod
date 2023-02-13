@@ -120,16 +120,37 @@ Listed here is an example of the output from list:
 
 ```json
 {
-  "variables": [
-    {
-      "name": "TF_VAR_cluster_api_url",
-      "default": "https://mycluster.example.com"
-    },
-    {
-      "name": "TF_VAR_github_repo_url",
-      "default": "https://github.com/some-repo"
-    }
-  ]
+  "specversion": "1.0",
+  "type": "com.ibm.techzone.itz.tf_hook_list.response",
+  "source": "https://github.ibm.com/skol/itz-deployer-plugins/tf-hook-list",
+  "subject": "fyre-vm",
+  "id": "7208f364-86af-4d18-8fcd-c1f5cd06cdb4",
+  "time": "2023-02-13T17:17:48.570677",
+  "datacontenttype": "application/json",
+  "data": {
+    "variables": [
+      {
+        "name": "TF_VAR_cloud_provider",
+        "default": "fyre"
+      },
+      {
+        "name": "TF_VAR_cloud_type",
+        "default": "private"
+      },
+      {
+        "name": "TF_VAR_fyre_api_key",
+        "default": ""
+      },
+      {
+        "name": "TF_VAR_fyre_root_password",
+        "default": ""
+      },
+      {
+        "name": "TF_VAR_fyre_username",
+        "default": ""
+      }
+    ]
+  }
 }
 ```
 
